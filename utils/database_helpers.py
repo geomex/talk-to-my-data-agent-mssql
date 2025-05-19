@@ -33,6 +33,8 @@ from openai.types.chat.chat_completion_system_message_param import (
 )
 from pydantic import ValidationError
 
+import pyodbc
+
 from utils.analyst_db import AnalystDB, DataSourceType
 from utils.code_execution import InvalidGeneratedCode
 from utils.credentials import (
@@ -40,12 +42,16 @@ from utils.credentials import (
     NoDatabaseCredentials,
     SAPDatasphereCredentials,
     SnowflakeCredentials,
+    MSSQLCredentials,
+    AzureSQLCredentials
 )
 from utils.logging_helper import get_logger
 from utils.prompts import (
     SYSTEM_PROMPT_BIGQUERY,
     SYSTEM_PROMPT_SAP_DATASPHERE,
     SYSTEM_PROMPT_SNOWFLAKE,
+    SYSTEM_PROMPT_MSSQL,
+    SYSTEM_PROMPT_AZURESQL
 )
 from utils.schema import (
     AnalystDataset,
@@ -765,12 +771,256 @@ class SAPDatasphereOperator(DatabaseOperator[SAPDatasphereCredentialArgs]):
         )
 
 
+class MicrosoftSQLOperator(DatabaseOperator[MSSQLCredentials]):
+    def __init__(
+        self,
+        credentials: MSSQLCredentials,
+        default_timeout: int = _DEFAULT_DB_QUERY_TIMEOUT,  # define or import
+    ):
+        if not credentials.is_configured():
+            raise ValueError("MSSQL credentials not properly configured")
+        self._credentials = credentials
+        self.default_timeout = default_timeout
+
+    @contextmanager
+    def create_connection(self) -> Generator[pyodbc.Connection, None, None]:
+        """Create a connection to SQL Server using provided credentials"""
+        if not self._credentials.is_configured():
+            raise ValueError("MSSQL credentials not properly configured")
+
+        conn_str = (
+            f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+            f"SERVER={self._credentials.host},{self._credentials.port};"
+            f"DATABASE={self._credentials.database};"
+            f"UID={self._credentials.user};"
+            f"PWD={self._credentials.password};"
+            f"Encrypt=no;TrustServerCertificate=yes;"
+        )
+
+        conn = pyodbc.connect(conn_str, timeout=self.default_timeout)
+        try:
+            yield conn
+        finally:
+            conn.close()
+
+    def execute_query(
+        self,
+        query: str,
+        timeout: int | None = None
+    ) -> List[Tuple[Any, ...]] | List[Dict[str, Any]]:
+        timeout = timeout if timeout is not None else self.default_timeout
+        try:
+            with self.create_connection() as conn:
+                conn.timeout = timeout
+                cursor = conn.cursor()
+                cursor.execute(query)
+                cols = [column[0] for column in cursor.description]
+                rows = cursor.fetchall()
+                return [dict(zip(cols, row)) for row in rows]
+
+        except Exception as e:
+            raise InvalidGeneratedCode(
+                f"MSSQL query failed: {str(e)}",
+                code=query,
+                exception=e,
+                traceback_str=traceback.format_exc(),
+            )
+
+    def get_tables(self, timeout: int | None = None) -> List[str]:
+        timeout = timeout if timeout is not None else self.default_timeout
+        try:
+            with self.create_connection() as conn:
+                conn.timeout = timeout
+                cursor = conn.cursor()
+
+                # Check schema exists
+                cursor.execute(
+                    f"IF DB_ID('{self._credentials.database}') IS NULL "
+                    f"THROW 51000, 'Database does not exist', 1;"
+                )
+
+                # Fetch tables and views
+                cursor.execute(
+                    "SELECT TABLE_SCHEMA, TABLE_NAME "
+                    "FROM INFORMATION_SCHEMA.TABLES "
+                    "WHERE TABLE_TYPE IN ('BASE TABLE','VIEW') "
+                    f"AND TABLE_SCHEMA = '{self._credentials.schema}' "
+                    "ORDER BY TABLE_SCHEMA, TABLE_NAME"
+                )
+                results = cursor.fetchall()
+                tables = [f"{row.TABLE_SCHEMA}.{row.TABLE_NAME}" for row in results]
+                return tables
+
+        except Exception as e:
+            logger.error(f"Failed to fetch tables: {str(e)}")
+            return []
+
+    @functools.lru_cache(maxsize=8)
+    async def get_data(
+        self,
+        *table_names: str,
+        analyst_db: Any,
+        sample_size: int = 5000,
+        timeout: int | None = None,
+    ) -> List[str]:
+        timeout = timeout if timeout is not None else self.default_timeout
+        names = []
+        try:
+            with self.create_connection() as conn:
+                conn.timeout = timeout
+                for table in table_names:
+                    try:
+                        cursor = conn.cursor()
+                        qualified = f"[{self._credentials.database}].{table}"
+                        cursor.execute(f"SELECT TOP {sample_size} * FROM {qualified}")
+                        cols = [col[0] for col in cursor.description]
+                        rows = cursor.fetchall()
+                        import pandas as pd
+                        df = pd.DataFrame.from_records(rows, columns=cols)
+                        await analyst_db.register_dataset(df, source_type="database")
+                        names.append(table)
+                    except Exception as e:
+                        logger.error(f"Error loading {table}: {e}")
+                        logger.error(f"Error type: {type(e)}")
+                        logger.error(f"Error details: {str(e)}")
+                        continue
+            return names
+        except Exception as e:
+            logger.error(f"Error fetching MSSQL data: {str(e)}")
+            logger.error(f"Error type: {type(e)}")
+            logger.error(f"Error details: {str(e)}")
+            return []
+
+    def get_system_prompt(self) -> ChatCompletionSystemMessageParam:
+        return ChatCompletionSystemMessageParam(
+            role="system",
+            content=SYSTEM_PROMPT_MSSQL.format(
+                schema=self._credentials.schema,
+                database=self._credentials.database
+            ),
+        )
+
+
+class AzureSQLOperator(DatabaseOperator[AzureSQLCredentials]):
+    def __init__(
+        self,
+        credentials: AzureSQLCredentials,
+        default_timeout: int = _DEFAULT_DB_QUERY_TIMEOUT,
+    ):
+        if not credentials.is_configured():
+            raise ValueError("Azure SQL credentials not properly configured")
+        self._credentials = credentials
+        self.default_timeout = default_timeout
+
+    @contextmanager
+    def create_connection(self) -> Generator[pyodbc.Connection, None, None]:
+        """Create a secure connection to Azure SQL Server"""
+        if not self._credentials.is_configured():
+            raise ValueError("Azure SQL credentials not properly configured")
+
+        conn_str = (
+            f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+            f"SERVER={self._credentials.host},{self._credentials.port};"
+            f"DATABASE={self._credentials.database};"
+            f"UID={self._credentials.user};"
+            f"PWD={self._credentials.password};"
+            f"Encrypt=yes;TrustServerCertificate=no;"
+        )
+
+        conn = pyodbc.connect(conn_str, timeout=self.default_timeout)
+        try:
+            yield conn
+        finally:
+            conn.close()
+
+    def execute_query(
+        self,
+        query: str,
+        timeout: int | None = None
+    ) -> List[Tuple[Any, ...]] | List[Dict[str, Any]]:
+        timeout = timeout if timeout is not None else self.default_timeout
+        try:
+            with self.create_connection() as conn:
+                conn.timeout = timeout
+                cursor = conn.cursor()
+                cursor.execute(query)
+                cols = [column[0] for column in cursor.description]
+                rows = cursor.fetchall()
+                return [dict(zip(cols, row)) for row in rows]
+
+        except Exception as e:
+            raise InvalidGeneratedCode(
+                f"Azure SQL query failed: {str(e)}",
+                code=query,
+                exception=e,
+                traceback_str=traceback.format_exc(),
+            )
+
+    def get_tables(self, timeout: int | None = None) -> List[str]:
+        timeout = timeout if timeout is not None else self.default_timeout
+        try:
+            with self.create_connection() as conn:
+                conn.timeout = timeout
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT TABLE_SCHEMA, TABLE_NAME "
+                    "FROM INFORMATION_SCHEMA.TABLES "
+                    "WHERE TABLE_TYPE IN ('BASE TABLE','VIEW') "
+                    f"AND TABLE_CATALOG = '{self._credentials.database}' "
+                    "ORDER BY TABLE_SCHEMA, TABLE_NAME"
+                )
+                results = cursor.fetchall()
+                return [f"{row.TABLE_SCHEMA}.{row.TABLE_NAME}" for row in results]
+        except Exception as e:
+            logger.error(f"Failed to fetch Azure SQL tables: {str(e)}")
+            return []
+
+    @functools.lru_cache(maxsize=8)
+    async def get_data(
+        self,
+        *table_names: str,
+        analyst_db: Any,
+        sample_size: int = 5000,
+        timeout: int | None = None,
+    ) -> List[str]:
+        timeout = timeout if timeout is not None else self.default_timeout
+        names = []
+        try:
+            with self.create_connection() as conn:
+                conn.timeout = timeout
+                for table in table_names:
+                    try:
+                        cursor = conn.cursor()
+                        qualified = f"[{self._credentials.database}].{table}"
+                        cursor.execute(f"SELECT TOP {sample_size} * FROM {qualified}")
+                        cols = [col[0] for col in cursor.description]
+                        rows = cursor.fetchall()
+                        import pandas as pd
+                        df = pd.DataFrame.from_records(rows, columns=cols)
+                        await analyst_db.register_dataset(df, source_type="database")
+                        names.append(table)
+                    except Exception as e:
+                        logger.error(f"Error loading {table}: {e}")
+                        continue
+            return names
+        except Exception as e:
+            logger.error(f"Error fetching Azure SQL data: {str(e)}")
+            return []
+
+    def get_system_prompt(self) -> ChatCompletionSystemMessageParam:
+        return ChatCompletionSystemMessageParam(
+            role="system",
+            content=SYSTEM_PROMPT_AZURESQL,
+        )
+
+
 def get_database_operator(app_infra: AppInfra) -> DatabaseOperator[Any]:
     if app_infra.database == "bigquery":
         credentials: (
             GoogleCredentials
             | SnowflakeCredentials
             | SAPDatasphereCredentials
+            | AzureSQLCredentials
             | NoDatabaseCredentials
         )
         try:
@@ -782,6 +1032,7 @@ def get_database_operator(app_infra: AppInfra) -> DatabaseOperator[Any]:
                 "BigQuery credentials not properly configured, falling back to no database"
             )
         return NoDatabaseOperator(NoDatabaseCredentials())
+
     elif app_infra.database == "snowflake":
         try:
             credentials = SnowflakeCredentials()
@@ -792,6 +1043,7 @@ def get_database_operator(app_infra: AppInfra) -> DatabaseOperator[Any]:
                 "Snowflake credentials not properly configured, falling back to no database"
             )
         return NoDatabaseOperator(NoDatabaseCredentials())
+
     elif app_infra.database == "sap":
         try:
             credentials = SAPDatasphereCredentials()
@@ -802,8 +1054,73 @@ def get_database_operator(app_infra: AppInfra) -> DatabaseOperator[Any]:
                 "SAP credentials not properly configured, falling back to no database"
             )
         return NoDatabaseOperator(NoDatabaseCredentials())
+
+    elif app_infra.database == "mssql":
+        try:
+            credentials = MSSQLCredentials()
+            if credentials.is_configured():
+                return MicrosoftSQLOperator(credentials)
+        except (ValidationError, ValueError):
+            logger.warning(
+                "MSSQL credentials not properly configured, falling back to no database"
+            )
+        return NoDatabaseOperator(NoDatabaseCredentials())
+    elif app_infra.database == "azure_sql":
+        credentials = AzureSQLCredentials()
+        if not credentials.is_configured():
+            logger.warning(
+                "Azure SQL credentials not properly configured, falling back to no database"
+            )
+            return NoDatabaseOperator(NoDatabaseCredentials())
+        try:
+            return AzureSQLOperator(credentials)
+        except Exception as e:
+            logger.warning(f"Failed to initialize AzureSQLOperator: {e}")
+            return NoDatabaseOperator(NoDatabaseCredentials())
     else:
         return NoDatabaseOperator(NoDatabaseCredentials())
+    
+
+
+# def get_database_operator(app_infra: AppInfra) -> DatabaseOperator[Any]:
+#     if app_infra.database == "bigquery":
+#         credentials: (
+#             GoogleCredentials
+#             | SnowflakeCredentials
+#             | SAPDatasphereCredentials
+#             | NoDatabaseCredentials
+#         )
+#         try:
+#             credentials = GoogleCredentials()
+#             if credentials.service_account_key and credentials.db_schema:
+#                 return BigQueryOperator(credentials)
+#         except (ValidationError, ValueError):
+#             logger.warning(
+#                 "BigQuery credentials not properly configured, falling back to no database"
+#             )
+#         return NoDatabaseOperator(NoDatabaseCredentials())
+#     elif app_infra.database == "snowflake":
+#         try:
+#             credentials = SnowflakeCredentials()
+#             if credentials.is_configured():
+#                 return SnowflakeOperator(credentials)
+#         except (ValidationError, ValueError):
+#             logger.warning(
+#                 "Snowflake credentials not properly configured, falling back to no database"
+#             )
+#         return NoDatabaseOperator(NoDatabaseCredentials())
+#     elif app_infra.database == "sap":
+#         try:
+#             credentials = SAPDatasphereCredentials()
+#             if credentials.is_configured():
+#                 return SAPDatasphereOperator(credentials)
+#         except (ValidationError, ValueError):
+#             logger.warning(
+#                 "SAP credentials not properly configured, falling back to no database"
+#             )
+#         return NoDatabaseOperator(NoDatabaseCredentials())
+#     else:
+#         return NoDatabaseOperator(NoDatabaseCredentials())
 
 
 def load_app_infra() -> AppInfra:

@@ -42,7 +42,8 @@ application_path = PROJECT_ROOT / get_frontend_path()
 
 app_source_args = ApplicationSourceArgs(
     resource_name=f"Data Analyst App Source [{PROJECT_NAME}]",
-    base_environment_id=RuntimeEnvironments.PYTHON_312_APPLICATION_BASE.value.id,
+    base_environment_id="682807b1b61af4d4d9d25975", # RuntimeEnvironments.PYTHON_312_APPLICATION_BASE.value.id,
+    base_environment_version_id="682812d3cf9f34c87d572e69"
 ).model_dump(mode="json", exclude_none=True)
 
 app_resource_name: str = f"Data Analyst Application [{PROJECT_NAME}]"

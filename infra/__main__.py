@@ -165,6 +165,7 @@ app_runtime_parameters = [
     ),
 ]
 
+print(DATABASE_CONNECTION_TYPE)
 
 db_credential = get_database_credentials(DATABASE_CONNECTION_TYPE)
 

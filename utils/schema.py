@@ -500,7 +500,14 @@ class CodeGeneration(BaseModel):
 RuntimeCredentialType = Literal["llm", "db"]
 
 
-DatabaseConnectionType = Literal["snowflake", "bigquery", "sap", "no_database"]
+DatabaseConnectionType = Literal[
+    "snowflake",
+    "bigquery",
+    "sap",
+    "mssql",
+    "azure_sql",
+    "no_database"
+]
 
 
 class AppInfra(BaseModel):
