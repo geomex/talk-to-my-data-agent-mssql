@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 from __future__ import annotations
 
 import json
@@ -32,7 +33,7 @@ from utils.credentials import (
     NoDatabaseCredentials,
     SAPDatasphereCredentials,
     SnowflakeCredentials,
-    MSSQLCredentials,
+    # MSSQLCredentials,
     AzureSQLCredentials
 )
 from utils.schema import (
@@ -215,7 +216,6 @@ def get_credential_runtime_parameter_values(
             },
         ]
         credential_rtp_dicts = [rtp for rtp in rtps if rtp["value"] is not None]
-
     elif isinstance(credentials, AzureSQLCredentials):
         rtps = [
             {
@@ -590,36 +590,36 @@ def get_database_credentials(
                     raise ValueError("Failed to connect to SAP Data Sphere.") from e
             return credentials
 
-        elif database == "mssql":
-            credentials = MSSQLCredentials()
-            if test_credentials:
-                url = URL.create(
-                    drivername="mssql+pyodbc",
-                    username=credentials.user,
-                    password=credentials.password,
-                    host=credentials.host,
-                    port=credentials.port,
-                    database=credentials.database,
-                    query={
-                        "driver": "ODBC Driver 17 for SQL Server",
-                        "Encrypt": "no",
-                        "TrustServerCertificate": "yes",
-                        "Connection Timeout": "5",
-                    },
-                )
+        # elif database == "mssql":
+        #     credentials = MSSQLCredentials()
+        #     if test_credentials:
+        #         url = URL.create(
+        #             drivername="mssql+pyodbc",
+        #             username=credentials.user,
+        #             password=credentials.password,
+        #             host=credentials.host,
+        #             port=credentials.port,
+        #             database=credentials.database,
+        #             query={
+        #                 "driver": "ODBC Driver 17 for SQL Server",
+        #                 "Encrypt": "no",
+        #                 "TrustServerCertificate": "yes",
+        #                 "Connection Timeout": "5",
+        #             },
+        #         )
 
-                try:
-                    engine = create_engine(url)
-                    with engine.connect() as conn:
-                        conn.execute(text("SELECT 1"))
-                except SQLAlchemyError as e:
-                    raise ValueError("❌ Failed to connect to Microsoft SQL Server.") from e
+        #         try:
+        #             engine = create_engine(url)
+        #             with engine.connect() as conn:
+        #                 conn.execute(text("SELECT 1"))
+        #         except SQLAlchemyError as e:
+        #             raise ValueError("❌ Failed to connect to Microsoft SQL Server.") from e
 
-            return credentials
+        #     return credentials
 
         elif database == "azure_sql":
-            credentials = AzureSQLCredentials()
-            # print(credentials.__dict__)
+            credentials = AzureSQLCredentials.from_env()
+            # logger.info(credentials.__dict__)
 
             if test_credentials:
                 import pyodbc
