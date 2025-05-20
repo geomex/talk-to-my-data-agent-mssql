@@ -11,6 +11,29 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from utils.schema import (
+    AnalystDataset,
+    CleansedColumnReport,
+    DataDictionary,
+    DataRegistryDataset,
+)
+from utils.logging_helper import get_logger
+from utils.database_helpers import get_external_database, load_app_infra
+from utils.api import (
+    download_registry_datasets,
+    list_registry_datasets,
+    log_memory,
+    process_data_and_update_state,
+)
+from utils.analyst_db import AnalystDB, DataSourceType
+from helpers import state_empty, state_init
+from datarobot_connect import DataRobotTokenManager
+from app_settings import (
+    apply_custom_css,
+    display_page_logo,
+    get_database_loader_message,
+    get_database_logo,
+)
 import asyncio
 import os
 import sys
@@ -22,31 +45,10 @@ import polars as pl
 import streamlit as st
 from streamlit.runtime.uploaded_file_manager import UploadedFile
 
-sys.path.append("..")
-from app_settings import (
-    apply_custom_css,
-    display_page_logo,
-    get_database_loader_message,
-    get_database_logo,
-)
-from datarobot_connect import DataRobotTokenManager
-from helpers import state_empty, state_init
+import json
 
-from utils.analyst_db import AnalystDB, DataSourceType
-from utils.api import (
-    download_registry_datasets,
-    list_registry_datasets,
-    log_memory,
-    process_data_and_update_state,
-)
-from utils.database_helpers import get_external_database, load_app_infra
-from utils.logging_helper import get_logger
-from utils.schema import (
-    AnalystDataset,
-    CleansedColumnReport,
-    DataDictionary,
-    DataRegistryDataset,
-)
+sys.path.append("..")
+
 
 warnings.filterwarnings("ignore")
 
@@ -159,11 +161,15 @@ async def load_from_database_callback() -> None:
                     *st.session_state.selected_schema_tables,
                     analyst_db=st.session_state.analyst_db,
                 )
-
+                logger.info(dataframes)
                 if not dataframes:
                     st.error(f"Failed to load data from {app_infra.database}")
                     return
-
+                logger.info(json.dumps({
+                    "dataframes": str(dataframes),
+                    "analyst_db": str(st.session_state.analyst_db),
+                    "data_source": str(st.session_state.data_source)
+                }, indent=2))
                 async for message in process_data_and_update_state(
                     dataframes,
                     st.session_state.analyst_db,
@@ -244,7 +250,8 @@ async def main() -> None:
 
             with st.spinner("Loading datasets from the Data Registry..."):
                 with st.session_state.datarobot_connect.use_user_token():
-                    datasets = [i.model_dump() for i in st_list_registry_datasets()]
+                    datasets = [i.model_dump()
+                                for i in st_list_registry_datasets()]
 
             # Create form for dataset selection
             with st.form("registry_selection_form", border=False):
@@ -359,7 +366,8 @@ async def main() -> None:
                                 )
                                 for report in reports:
                                     with st.container():
-                                        st.markdown(f"### {report.new_column_name}")
+                                        st.markdown(
+                                            f"### {report.new_column_name}")
                                         if report.original_column_name:
                                             st.write(
                                                 f"Original name: `{report.original_column_name}`"
@@ -390,7 +398,8 @@ async def main() -> None:
                         if unchanged:
                             st.write("### Unchanged Columns")
                             st.write(
-                                ", ".join(f"`{r.new_column_name}`" for r in unchanged)
+                                ", ".join(
+                                    f"`{r.new_column_name}`" for r in unchanged)
                             )
 
                 except ValueError:
