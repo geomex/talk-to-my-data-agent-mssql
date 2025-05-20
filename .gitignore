@@ -206,6 +206,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+**/.*~undo-tree~
+**/*~undo-tree~
+**/*Minibuf-1*
+
 
 package-lock.json
 bun.lockb
