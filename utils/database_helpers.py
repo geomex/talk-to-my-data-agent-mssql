@@ -84,6 +84,11 @@ class NoDatabaseCredentialArgs:
     credentials: NoDatabaseCredentials
 
 
+@dataclass
+class AzureSQLCredentialArgs:
+    credentials: AzureSQLCredentials
+
+
 class DatabaseOperator(ABC, Generic[T]):
     @abstractmethod
     def __init__(self, credentials: T, default_timeout: int): ...
@@ -261,7 +266,8 @@ class SnowflakeOperator(DatabaseOperator[SnowflakeCredentialArgs]):
                     )
                     current_settings = cursor.fetchone()
                     logger.info(
-                        f"Current settings - Database: {current_settings[0]}, Schema: {current_settings[1]}, Role: {current_settings[2]}, Warehouse: {current_settings[3]}"  # type: ignore[index]
+                        # type: ignore[index]
+                        f"Current settings - Database: {current_settings[0]}, Schema: {current_settings[1]}, Role: {current_settings[2]}, Warehouse: {current_settings[3]}"
                     )
 
                     # Check if schema exists
@@ -342,7 +348,8 @@ class SnowflakeOperator(DatabaseOperator[SnowflakeCredentialArgs]):
                 for table in table_names:
                     try:
                         qualified_table = f'{self._credentials.database}.{self._credentials.db_schema}."{table}"'
-                        logger.info(f"Fetching data from table: {qualified_table}")
+                        logger.info(
+                            f"Fetching data from table: {qualified_table}")
                         cursor.execute(
                             f"ALTER SESSION SET STATEMENT_TIMEOUT_IN_SECONDS = {timeout}"
                         )
@@ -355,9 +362,11 @@ class SnowflakeOperator(DatabaseOperator[SnowflakeCredentialArgs]):
 
                         columns = [desc[0] for desc in cursor.description]
                         data = cursor.fetchall()
-                        pandas_df = pd.DataFrame(data=data, columns=columns, dtype=str)
+                        pandas_df = pd.DataFrame(
+                            data=data, columns=columns, dtype=str)
                         df = pl.DataFrame(
-                            data=pandas_df, schema={col: pl.String for col in columns}
+                            data=pandas_df, schema={
+                                col: pl.String for col in columns}
                         )
 
                         logger.info(
@@ -494,7 +503,8 @@ class BigQueryOperator(DatabaseOperator[BigQueryCredentialArgs]):
                         qualified_table = (
                             f"{self._database}.{self._credentials.db_schema}.{table}"
                         )
-                        logger.info(f"Fetching data from table: {qualified_table}")
+                        logger.info(
+                            f"Fetching data from table: {qualified_table}")
 
                         df: pd.DataFrame = conn.query(
                             f"""
@@ -509,7 +519,8 @@ class BigQueryOperator(DatabaseOperator[BigQueryCredentialArgs]):
                             if pd.api.types.is_datetime64_any_dtype(
                                 df[col]
                             ) or isinstance(df[col].dtype, pd.DatetimeTZDtype):
-                                df[col] = df[col].dt.strftime("%Y-%m-%d %H:%M:%S")
+                                df[col] = df[col].dt.strftime(
+                                    "%Y-%m-%d %H:%M:%S")
                             elif df[col].dtype == "object":
                                 try:
                                     pd.to_datetime(df[col], errors="raise")
@@ -521,8 +532,10 @@ class BigQueryOperator(DatabaseOperator[BigQueryCredentialArgs]):
                         logger.info(
                             f"Successfully loaded table {table}: {len(df)} rows, {len(df.columns)} columns"
                         )
-                        data = cast(list[dict[str, Any]], df.to_dict("records"))
-                        dataframes.append(AnalystDataset(name=table, data=data))
+                        data = cast(list[dict[str, Any]],
+                                    df.to_dict("records"))
+                        dataframes.append(
+                            AnalystDataset(name=table, data=data))
 
                     except Exception as e:
                         logger.error(f"Error loading table {table}: {str(e)}")
@@ -562,7 +575,8 @@ class SAPDatasphereOperator(DatabaseOperator[SAPDatasphereCredentialArgs]):
         default_timeout: int = _DEFAULT_DB_QUERY_TIMEOUT,
     ):
         if not credentials.is_configured():
-            raise ValueError("SAP Data Sphere credentials not properly configured")
+            raise ValueError(
+                "SAP Data Sphere credentials not properly configured")
         self._credentials = credentials
         self.default_timeout = default_timeout
 
@@ -570,7 +584,8 @@ class SAPDatasphereOperator(DatabaseOperator[SAPDatasphereCredentialArgs]):
     def create_connection(self) -> Generator[dbapi.Connection]:
         """Create a connection to SAP Data Sphere"""
         if not self._credentials.is_configured():
-            raise ValueError("SAP Data Sphere credentials not properly configured")
+            raise ValueError(
+                "SAP Data Sphere credentials not properly configured")
 
         connect_params: dict[str, Any] = {
             "address": self._credentials.host,
@@ -648,8 +663,8 @@ class SAPDatasphereOperator(DatabaseOperator[SAPDatasphereCredentialArgs]):
                     # Get all tables and views in the schema
                     cursor.execute(
                         f"""
-                        SELECT TABLE_NAME 
-                        FROM SYS.TABLES 
+                        SELECT TABLE_NAME
+                        FROM SYS.TABLES
                         WHERE SCHEMA_NAME = '{self._credentials.db_schema}'
                         ORDER BY TABLE_NAME
                         """
@@ -659,8 +674,8 @@ class SAPDatasphereOperator(DatabaseOperator[SAPDatasphereCredentialArgs]):
                     # Get all views
                     cursor.execute(
                         f"""
-                        SELECT VIEW_NAME 
-                        FROM SYS.VIEWS 
+                        SELECT VIEW_NAME
+                        FROM SYS.VIEWS
                         WHERE SCHEMA_NAME = '{self._credentials.db_schema}'
                         ORDER BY VIEW_NAME
                         """
@@ -681,7 +696,8 @@ class SAPDatasphereOperator(DatabaseOperator[SAPDatasphereCredentialArgs]):
                     cursor.close()
 
         except Exception as e:
-            logger.error(f"Failed to fetch tables from SAP Data Sphere: {str(e)}")
+            logger.error(
+                f"Failed to fetch tables from SAP Data Sphere: {str(e)}")
             logger.error(f"Error type: {type(e)}")
             logger.error(f"Error details: {str(e)}")
             return []
@@ -714,7 +730,8 @@ class SAPDatasphereOperator(DatabaseOperator[SAPDatasphereCredentialArgs]):
                 for table in table_names:
                     try:
                         qualified_table = f'"{self._credentials.db_schema}"."{table}"'
-                        logger.info(f"Fetching data from table: {qualified_table}")
+                        logger.info(
+                            f"Fetching data from table: {qualified_table}")
 
                         # Execute query to get data with limit
                         cursor.execute(
@@ -729,11 +746,13 @@ class SAPDatasphereOperator(DatabaseOperator[SAPDatasphereCredentialArgs]):
                         data = cursor.fetchall()
 
                         # Convert to pandas DataFrame
-                        pandas_df = pd.DataFrame(data=data, columns=columns, dtype=str)
+                        pandas_df = pd.DataFrame(
+                            data=data, columns=columns, dtype=str)
 
                         # Convert to polars DataFrame
                         df = pl.DataFrame(
-                            data=pandas_df, schema={col: pl.String for col in columns}
+                            data=pandas_df, schema={
+                                col: pl.String for col in columns}
                         )
 
                         logger.info(
@@ -848,7 +867,8 @@ class MicrosoftSQLOperator(DatabaseOperator[MSSQLCredentials]):
                     "ORDER BY TABLE_SCHEMA, TABLE_NAME"
                 )
                 results = cursor.fetchall()
-                tables = [f"{row.TABLE_SCHEMA}.{row.TABLE_NAME}" for row in results]
+                tables = [
+                    f"{row.TABLE_SCHEMA}.{row.TABLE_NAME}" for row in results]
                 return tables
 
         except Exception as e:
@@ -872,7 +892,8 @@ class MicrosoftSQLOperator(DatabaseOperator[MSSQLCredentials]):
                     try:
                         cursor = conn.cursor()
                         qualified = f"[{self._credentials.database}].{table}"
-                        cursor.execute(f"SELECT TOP {sample_size} * FROM {qualified}")
+                        cursor.execute(
+                            f"SELECT TOP {sample_size} * FROM {qualified}")
                         cols = [col[0] for col in cursor.description]
                         rows = cursor.fetchall()
                         import pandas as pd
@@ -901,10 +922,10 @@ class MicrosoftSQLOperator(DatabaseOperator[MSSQLCredentials]):
         )
 
 
-class AzureSQLOperator(DatabaseOperator[AzureSQLCredentials]):
+class AzureSQLOperator(DatabaseOperator[AzureSQLCredentialArgs]):
     def __init__(
         self,
-        credentials: AzureSQLCredentials,
+        credentials: AzureSQLCredentials.from_env(),
         default_timeout: int = _DEFAULT_DB_QUERY_TIMEOUT,
     ):
         if not credentials.is_configured():
@@ -962,15 +983,18 @@ class AzureSQLOperator(DatabaseOperator[AzureSQLCredentials]):
             with self.create_connection() as conn:
                 conn.timeout = timeout
                 cursor = conn.cursor()
-                cursor.execute(
+                query = (
                     "SELECT TABLE_SCHEMA, TABLE_NAME "
                     "FROM INFORMATION_SCHEMA.TABLES "
                     "WHERE TABLE_TYPE IN ('BASE TABLE','VIEW') "
                     f"AND TABLE_CATALOG = '{self._credentials.database}' "
+                    f"AND TABLE_SCHEMA = '{self._credentials.schema_name}' "
                     "ORDER BY TABLE_SCHEMA, TABLE_NAME"
                 )
+                cursor.execute(query)
                 results = cursor.fetchall()
-                return [f"{row.TABLE_SCHEMA}.{row.TABLE_NAME}" for row in results]
+                return [f"{row.TABLE_NAME}" for row in results]
+
         except Exception as e:
             logger.error(f"Failed to fetch Azure SQL tables: {str(e)}")
             return []
@@ -985,23 +1009,48 @@ class AzureSQLOperator(DatabaseOperator[AzureSQLCredentials]):
     ) -> List[str]:
         timeout = timeout if timeout is not None else self.default_timeout
         names = []
+
+        logger.info(
+            f"Starting data extraction from Azure SQL. Tables: {table_names}, "
+            f"Schema: {self._credentials.schema_name}, Sample size: {sample_size}"
+        )
+
         try:
             with self.create_connection() as conn:
                 conn.timeout = timeout
-                for table in table_names:
-                    try:
-                        cursor = conn.cursor()
-                        qualified = f"[{self._credentials.database}].{table}"
-                        cursor.execute(f"SELECT TOP {sample_size} * FROM {qualified}")
-                        cols = [col[0] for col in cursor.description]
-                        rows = cursor.fetchall()
-                        import pandas as pd
-                        df = pd.DataFrame.from_records(rows, columns=cols)
-                        await analyst_db.register_dataset(df, source_type="database")
-                        names.append(table)
-                    except Exception as e:
-                        logger.error(f"Error loading {table}: {e}")
-                        continue
+                cursor = conn.cursor()
+                logger.info("Azure SQL connection established.")
+            for table in table_names:
+                try:
+                    table_name = table.split(".")[-1]
+                    qualified = (
+                        f"[{self._credentials.database}]."
+                        f"[{self._credentials.schema_name}]."
+                        f"[{table_name}]"
+                    )
+                    logger.info(f"Querying table: {qualified}")
+                    cursor.execute(
+                        f"SELECT TOP {sample_size} * FROM {qualified}")
+                    cols = [col[0] for col in cursor.description]
+                    rows = cursor.fetchall()
+
+                    pandas_df = pd.DataFrame.from_records(rows, columns=cols)
+                    polars_df = pl.DataFrame(pandas_df)  # ✅ Convert
+                    dataset = AnalystDataset(
+                        name=table_name, data=DataFrameWrapper(polars_df))
+
+                    await analyst_db.register_dataset(
+                        dataset,
+                        data_source=DataSourceType.DATABASE
+                    )
+
+                    logger.info(
+                        f"Successfully registered dataset for table: {table_name}")
+                    names.append(table_name)
+                except Exception as e:
+                    logger.error(f"Error loading table '{table}': {e}")
+                    continue
+
             return names
         except Exception as e:
             logger.error(f"Error fetching Azure SQL data: {str(e)}")
@@ -1055,18 +1104,19 @@ def get_database_operator(app_infra: AppInfra) -> DatabaseOperator[Any]:
             )
         return NoDatabaseOperator(NoDatabaseCredentials())
 
-    elif app_infra.database == "mssql":
-        try:
-            credentials = MSSQLCredentials()
-            if credentials.is_configured():
-                return MicrosoftSQLOperator(credentials)
-        except (ValidationError, ValueError):
-            logger.warning(
-                "MSSQL credentials not properly configured, falling back to no database"
-            )
-        return NoDatabaseOperator(NoDatabaseCredentials())
+    # elif app_infra.database == "mssql":
+    #     try:
+    #         credentials = MSSQLCredentials()
+    #         if credentials.is_configured():
+    #             return MicrosoftSQLOperator(credentials)
+    #     except (ValidationError, ValueError):
+    #         logger.warning(
+    #             "MSSQL credentials not properly configured, falling back to no database"
+    #         )
+    #     return NoDatabaseOperator(NoDatabaseCredentials())
+
     elif app_infra.database == "azure_sql":
-        credentials = AzureSQLCredentials()
+        credentials = AzureSQLCredentials.from_env()
         if not credentials.is_configured():
             logger.warning(
                 "Azure SQL credentials not properly configured, falling back to no database"
@@ -1079,48 +1129,6 @@ def get_database_operator(app_infra: AppInfra) -> DatabaseOperator[Any]:
             return NoDatabaseOperator(NoDatabaseCredentials())
     else:
         return NoDatabaseOperator(NoDatabaseCredentials())
-    
-
-
-# def get_database_operator(app_infra: AppInfra) -> DatabaseOperator[Any]:
-#     if app_infra.database == "bigquery":
-#         credentials: (
-#             GoogleCredentials
-#             | SnowflakeCredentials
-#             | SAPDatasphereCredentials
-#             | NoDatabaseCredentials
-#         )
-#         try:
-#             credentials = GoogleCredentials()
-#             if credentials.service_account_key and credentials.db_schema:
-#                 return BigQueryOperator(credentials)
-#         except (ValidationError, ValueError):
-#             logger.warning(
-#                 "BigQuery credentials not properly configured, falling back to no database"
-#             )
-#         return NoDatabaseOperator(NoDatabaseCredentials())
-#     elif app_infra.database == "snowflake":
-#         try:
-#             credentials = SnowflakeCredentials()
-#             if credentials.is_configured():
-#                 return SnowflakeOperator(credentials)
-#         except (ValidationError, ValueError):
-#             logger.warning(
-#                 "Snowflake credentials not properly configured, falling back to no database"
-#             )
-#         return NoDatabaseOperator(NoDatabaseCredentials())
-#     elif app_infra.database == "sap":
-#         try:
-#             credentials = SAPDatasphereCredentials()
-#             if credentials.is_configured():
-#                 return SAPDatasphereOperator(credentials)
-#         except (ValidationError, ValueError):
-#             logger.warning(
-#                 "SAP credentials not properly configured, falling back to no database"
-#             )
-#         return NoDatabaseOperator(NoDatabaseCredentials())
-#     else:
-#         return NoDatabaseOperator(NoDatabaseCredentials())
 
 
 def load_app_infra() -> AppInfra:
@@ -1151,3 +1159,29 @@ def load_app_infra() -> AppInfra:
 
 def get_external_database() -> DatabaseOperator[Any]:
     return get_database_operator(load_app_infra())
+
+
+class DataFrameWrapper:
+    def __init__(self, df: pl.DataFrame):
+        if not isinstance(df, pl.DataFrame):
+            raise TypeError(f"Expected pl.DataFrame, got {type(df)}")
+        self.df = df
+
+    def to_dict(self) -> list[dict[str, Any]]:
+        return self.df.to_dicts()
+
+    def __repr__(self) -> str:
+        return f"<DataFrameWrapper shape={self.df.shape}>"
+
+# def format_df_sample(df: Any, rows: int = 10) -> str:
+#     try:
+#         # Polars DataFrame
+#         if hasattr(df, "to_pandas"):
+#             return df.head(rows).to_pandas().to_string(index=False)
+#         # Pandas DataFrame
+#         elif hasattr(df, "to_string"):
+#             return df.head(rows).to_string(index=False)
+#         else:
+#             return f"<unknown DataFrame type: {type(df)}>"
+#     except Exception as e:
+#         return f"<error formatting dataframe: {e}>"
