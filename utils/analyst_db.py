@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any, AsyncGenerator, List, Optional, cast
+import pandas as pd
 
 import duckdb
 import polars as pl
@@ -85,7 +86,8 @@ class BaseDuckDBHandler(ABC):
         """Initialize database path and create tables."""
         self.db_version = db_version
         self.user_id = user_id
-        self.db_path = self.get_db_path(user_id=user_id, db_path=db_path, name=name)
+        self.db_path = self.get_db_path(
+            user_id=user_id, db_path=db_path, name=name)
 
     async def _create_db_version_table(
         self,
@@ -102,7 +104,8 @@ class BaseDuckDBHandler(ABC):
         )
         # insert new version
         await self.execute_query(
-            conn, "INSERT OR IGNORE INTO db_version VALUES (?)", [self.db_version]
+            conn, "INSERT OR IGNORE INTO db_version VALUES (?)", [
+                self.db_version]
         )
 
     async def _initialize_database(self) -> None:
@@ -241,7 +244,8 @@ class DatasetHandler(BaseDuckDBHandler):
                     f"original_name required for {dataset_type.value} datasets"
                 )
             if not await self.table_exists(original_name):
-                raise ValueError(f"Original dataset '{original_name}' not found")
+                raise ValueError(
+                    f"Original dataset '{original_name}' not found")
 
         async with self._get_connection() as conn:
             # Create the table
@@ -249,7 +253,8 @@ class DatasetHandler(BaseDuckDBHandler):
 
             def create_table() -> None:
                 conn.register("temp_view", arrow_table)
-                conn.execute(f"CREATE TABLE '{name}' AS SELECT * FROM temp_view")
+                conn.execute(
+                    f"CREATE TABLE '{name}' AS SELECT * FROM temp_view")
                 conn.unregister("temp_view")
 
             await asyncio.get_running_loop().run_in_executor(None, create_table)
@@ -424,7 +429,8 @@ class DatasetHandler(BaseDuckDBHandler):
                 )
 
                 if not row:
-                    raise ValueError(f"Metadata for dataset '{name}' not found")
+                    raise ValueError(
+                        f"Metadata for dataset '{name}' not found")
 
                 # Format the metadata as a dictionary
                 metadata = DatasetMetadata(
@@ -493,14 +499,16 @@ class DatasetHandler(BaseDuckDBHandler):
                 )
                 return cast(pl.DataFrame, pl.from_arrow(arrow_table))
             except duckdb.CatalogException as e:
-                raise ValueError(f"Error retrieving dataset '{name}': {str(e)}") from e
+                raise ValueError(
+                    f"Error retrieving dataset '{name}': {str(e)}") from e
 
     async def store_cleansing_report(
         self, dataset_name: str, reports: list[CleansedColumnReport]
     ) -> None:
         """Store cleansing reports in the metadata table asynchronously."""
         async with self._get_connection() as conn:
-            report_json = json.dumps([report.model_dump() for report in reports])
+            report_json = json.dumps([report.model_dump()
+                                     for report in reports])
             await self.execute_query(
                 conn,
                 """
@@ -548,12 +556,14 @@ class DatasetHandler(BaseDuckDBHandler):
 
             # Delete metadata
             await self.execute_query(
-                conn, "DELETE FROM dataset_metadata WHERE table_name = ?", [name]
+                conn, "DELETE FROM dataset_metadata WHERE table_name = ?", [
+                    name]
             )
 
             # Delete any cleansing reports
             await self.execute_query(
-                conn, "DELETE FROM cleansing_reports WHERE dataset_name = ?", [name]
+                conn, "DELETE FROM cleansing_reports WHERE dataset_name = ?", [
+                    name]
             )
 
         logger.info(f"Deleted dataset {name}")
@@ -744,7 +754,8 @@ class ChatHandler(BaseDuckDBHandler):
             if rows:
                 messages = []
                 for row in rows:
-                    message = AnalystChatMessage.model_validate(json.loads(row[1]))
+                    message = AnalystChatMessage.model_validate(
+                        json.loads(row[1]))
                     # Ensure the message has the correct id and chat_id
                     message.id = row[0]
                     message.chat_id = row[2]
@@ -850,7 +861,8 @@ class ChatHandler(BaseDuckDBHandler):
             chat_id: The ID of the chat to update
             data_source: The new data source value
         """
-        logger.info(f"Updating data source for chat {chat_id} to '{data_source}'")
+        logger.info(
+            f"Updating data source for chat {chat_id} to '{data_source}'")
 
         async with self._get_connection() as conn:
             # Check if the chat exists
@@ -893,7 +905,8 @@ class ChatHandler(BaseDuckDBHandler):
             The ID of the newly added message
         """
         if not chat_id:
-            logger.warning("No chat_id provided for add_chat_message operation")
+            logger.warning(
+                "No chat_id provided for add_chat_message operation")
             return ""
 
         logger.info(f"Adding message to chat with ID {chat_id}")
@@ -917,7 +930,8 @@ class ChatHandler(BaseDuckDBHandler):
                 return ""
 
             # Insert the new message
-            message_json = json.dumps(message.model_dump(), cls=ChatJSONEncoder)
+            message_json = json.dumps(
+                message.model_dump(), cls=ChatJSONEncoder)
             await self.execute_query(
                 conn,
                 """
@@ -961,7 +975,8 @@ class ChatHandler(BaseDuckDBHandler):
             True if deletion was successful, False otherwise
         """
         if not message_id:
-            logger.warning("No message_id provided for delete_chat_message operation")
+            logger.warning(
+                "No message_id provided for delete_chat_message operation")
             return False
 
         logger.info(f"Deleting chat message with ID {message_id}")
@@ -969,7 +984,8 @@ class ChatHandler(BaseDuckDBHandler):
         async with self._get_connection() as conn:
             # Check if the message exists
             result = await self.execute_query(
-                conn, "SELECT chat_id FROM chat_messages WHERE id = ?", [message_id]
+                conn, "SELECT chat_id FROM chat_messages WHERE id = ?", [
+                    message_id]
             )
             row = await asyncio.get_running_loop().run_in_executor(
                 None, lambda: result.fetchone()
@@ -1015,7 +1031,8 @@ class ChatHandler(BaseDuckDBHandler):
             The message if found, None otherwise
         """
         if not message_id:
-            logger.warning("No message_id provided for get_chat_message operation")
+            logger.warning(
+                "No message_id provided for get_chat_message operation")
             return None
 
         logger.info(f"Getting chat message with ID {message_id}")
@@ -1062,7 +1079,8 @@ class ChatHandler(BaseDuckDBHandler):
             True if update was successful, False otherwise
         """
         if not message_id:
-            logger.warning("No message_id provided for update_chat_message operation")
+            logger.warning(
+                "No message_id provided for update_chat_message operation")
             return False
 
         logger.info(f"Updating chat message with ID {message_id}")
@@ -1073,14 +1091,16 @@ class ChatHandler(BaseDuckDBHandler):
         async with self._get_connection() as conn:
             # Check if the message exists
             result = await self.execute_query(
-                conn, "SELECT chat_id FROM chat_messages WHERE id = ?", [message_id]
+                conn, "SELECT chat_id FROM chat_messages WHERE id = ?", [
+                    message_id]
             )
             row = await asyncio.get_running_loop().run_in_executor(
                 None, lambda: result.fetchone()
             )
 
             if not row:
-                logger.warning(f"Chat message with ID {message_id} does not exist")
+                logger.warning(
+                    f"Chat message with ID {message_id} does not exist")
                 return False
 
             chat_id = row[0]
@@ -1088,7 +1108,8 @@ class ChatHandler(BaseDuckDBHandler):
             message.chat_id = chat_id
 
             # Update the message
-            message_json = json.dumps(message.model_dump(), cls=ChatJSONEncoder)
+            message_json = json.dumps(
+                message.model_dump(), cls=ChatJSONEncoder)
             await self.execute_query(
                 conn,
                 """
@@ -1199,7 +1220,8 @@ class ChatHandler(BaseDuckDBHandler):
                         message.id = str(uuid.uuid4())
                     message.chat_id = chat_id
 
-                    message_json = json.dumps(message.model_dump(), cls=ChatJSONEncoder)
+                    message_json = json.dumps(
+                        message.model_dump(), cls=ChatJSONEncoder)
                     await self.execute_query(
                         conn,
                         """
@@ -1232,7 +1254,8 @@ class ChatHandler(BaseDuckDBHandler):
             async with self._get_connection() as conn:
                 # First delete all associated messages
                 await self.execute_query(
-                    conn, "DELETE FROM chat_messages WHERE chat_id = ?", [chat_id]
+                    conn, "DELETE FROM chat_messages WHERE chat_id = ?", [
+                        chat_id]
                 )
 
                 # Then delete the chat history record
@@ -1261,12 +1284,14 @@ class ChatHandler(BaseDuckDBHandler):
                     chat_id = row[0]
                     # Delete all associated messages
                     await self.execute_query(
-                        conn, "DELETE FROM chat_messages WHERE chat_id = ?", [chat_id]
+                        conn, "DELETE FROM chat_messages WHERE chat_id = ?", [
+                            chat_id]
                     )
 
                     # Then delete the chat history record
                     await self.execute_query(
-                        conn, "DELETE FROM chat_history WHERE id = ?", [chat_id]
+                        conn, "DELETE FROM chat_history WHERE id = ?", [
+                            chat_id]
                     )
         else:
             logger.warning(
@@ -1280,7 +1305,8 @@ class ChatHandler(BaseDuckDBHandler):
         async with self._get_connection() as conn:
             # Get all chat IDs for this user
             result = await self.execute_query(
-                conn, "SELECT id FROM chat_history WHERE user_id = ?", [self.user_id]
+                conn, "SELECT id FROM chat_history WHERE user_id = ?", [
+                    self.user_id]
             )
             await asyncio.get_running_loop().run_in_executor(
                 None, lambda: result.fetchall()
@@ -1288,7 +1314,8 @@ class ChatHandler(BaseDuckDBHandler):
 
             # First delete all chat messages for this user's chats
             chat_ids_result = await self.execute_query(
-                conn, "SELECT id FROM chat_history WHERE user_id = ?", [self.user_id]
+                conn, "SELECT id FROM chat_history WHERE user_id = ?", [
+                    self.user_id]
             )
             chat_ids = await asyncio.get_running_loop().run_in_executor(
                 None, lambda: chat_ids_result.fetchall()
@@ -1296,12 +1323,14 @@ class ChatHandler(BaseDuckDBHandler):
 
             for (chat_id,) in chat_ids:
                 await self.execute_query(
-                    conn, "DELETE FROM chat_messages WHERE chat_id = ?", [chat_id]
+                    conn, "DELETE FROM chat_messages WHERE chat_id = ?", [
+                        chat_id]
                 )
 
             # Then delete the chat history records
             await self.execute_query(
-                conn, "DELETE FROM chat_history WHERE user_id = ?", [self.user_id]
+                conn, "DELETE FROM chat_history WHERE user_id = ?", [
+                    self.user_id]
             )
 
 
@@ -1352,6 +1381,36 @@ class AnalystDB:
         data_source: DataSourceType,
         file_size: int = 0,
     ) -> None:
+
+        if isinstance(df, pd.DataFrame):
+            logger.info(
+                f"✅ df is a pandas DataFrame\n"
+                f"- Shape: {df.shape}\n"
+                f"- Columns: {list(df.columns)}\n"
+                f"- dtypes:\n{df.dtypes}\n"
+                f"- Head:\n{df.head(3).to_string(index=False)}"
+            ) 
+
+        elif hasattr(df, "to_df") and callable(df.to_df):
+            df_inner = df.to_df()
+            try:
+                df_head_str = df_inner.head(3).to_pandas().to_string(index=False)
+            except Exception as e:
+                df_head_str = f"<failed to format DataFrame head: {e}>"
+
+            logger.info(
+                f"✅ df is a {type(df).__name__} object with a DataFrame inside\n"
+                f"- Name: {getattr(df, 'name', '[no name]')}\n"
+                f"- Shape: {df_inner.shape}\n"
+                f"- Columns: {list(df_inner.columns)}\n"
+                f"- dtypes:\n{df_inner.dtypes}\n"
+                f"- Head:\n{df_head_str}"
+            )
+
+        else:
+            logger.warning(
+                f"⚠️ df is NOT a DataFrame or CleansedDataset. Type: {type(df)}")
+
         if isinstance(df, CleansedDataset):
             is_cleansed = True
             await self.dataset_handler.store_cleansing_report(
