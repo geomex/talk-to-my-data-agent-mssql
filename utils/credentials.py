@@ -27,23 +27,32 @@ load_dotenv()
 class DRCredentials(BaseSettings): ...
 
 
-class AzureSQLCredentials(DRCredentials):
-    host: str = Field(default_factory=lambda: os.getenv("AZURE_SQL_HOST", ""))
-    port: int = Field(default_factory=lambda: int(os.getenv("AZURE_SQL_PORT", 1433)))
-    user: str = Field(default_factory=lambda: os.getenv("AZURE_SQL_USER", ""))
-    password: str = Field(default_factory=lambda: os.getenv("AZURE_SQL_PASSWORD", ""))
-    database: str = Field(default_factory=lambda: os.getenv("AZURE_SQL_DATABASE", ""))
-
+class AzureSQLCredentials(BaseSettings):
+    host: str
+    port: str
+    user: str
+    password: str
+    database: str
+    schema_name: str
+    @classmethod
+    def from_env(cls) -> "AzureSQLCredentials":
+        return cls(
+            host=os.environ.get("AZURE_SQL_HOST", "ttmdb-integration.database.windows.net"),
+            port=os.environ.get("AZURE_SQL_PORT", "1433"),
+            user=os.environ.get("AZURE_SQL_USER", "dradmin"),
+            password=os.environ.get("AZURE_SQL_PASSWORD", "DataRobot123!"),
+            database=os.environ.get("AZURE_SQL_DATABASE", "ttmd-integration-db"),
+            schema_name=os.environ.get("AZURE_SQL_SCHEMA", "dbo")
+        )
     def is_configured(self) -> bool:
-        return bool(self.host and self.user and self.password and self.database)
-
+        return all([self.host, self.user, self.password, self.database])
 
 # class AzureSQLCredentials(BaseSettings):
 #     host: str = Field(
 #         default_factory=lambda: os.getenv("AZURE_SQL_HOST"),
 #         validation_alias=AliasChoices(
 #             "AZURE_SQL_HOST",
-#             AliasPath("MLOPS_RUNTIME_PARAM_AZURE_SQL_HOST", "payload")
+#             AliasPath("MLOPS_RUNTIME_PARAM_AZURE_SQL_HOST", "payload", "host")
 #         )
 #     )
 #     port: int = Field(
@@ -87,48 +96,48 @@ class AzureSQLCredentials(DRCredentials):
 #         return bool(self.host and self.user and self.password and self.database)
 
 
-class MSSQLCredentials(DRCredentials):
-    host: str = Field(
-        validation_alias=AliasChoices(
-            "MSSQL_USER",
-            AliasPath("MLOPS_RUNTIME_PARAM_MSSQL_HOST", "payload", "host")
-        )
-    )
-    port: int = Field(
-        default=1433,
-        validation_alias=AliasChoices(
-            "MSSQL_PORT",
-            AliasPath("MLOPS_RUNTIME_PARAM_MSSQL_PORT", "payload", "port")
-        )
-    )
-    user: str = Field(
-        validation_alias=AliasChoices(
-            "MSSQL_USER",
-            AliasPath("MLOPS_RUNTIME_PARAM_MSSQL_USER", "payload", "user")
-        )
-    )
-    password: str = Field(
-        validation_alias=AliasChoices(
-            "MSSQL_PASSWORD",
-            AliasPath("MLOPS_RUNTIME_PARAM_MSSQL_PASSWORD", "payload", "password")
-        )
-    )
-    database: str = Field(
-        validation_alias=AliasChoices(
-            "MSSQL_DATABASE",
-            AliasPath("MLOPS_RUNTIME_PARAM_MSSQL_DATABASE", "payload", "database")
-        )
-    )
-    # schema: Optional[str] = Field(
-    #     default="dbo",
-    #     validation_alias=AliasChoices(
-    #         "MSSQL_SCHEMA",
-    #         AliasPath("MLOPS_RUNTIME_PARAM_MSSQL_SCHEMA", "payload", "schema")
-    #     )
-    # )
+# class MSSQLCredentials(DRCredentials):
+#     host: str = Field(
+#         validation_alias=AliasChoices(
+#             "MSSQL_USER",
+#             AliasPath("MLOPS_RUNTIME_PARAM_MSSQL_HOST", "payload", "host")
+#         )
+#     )
+#     port: int = Field(
+#         default=1433,
+#         validation_alias=AliasChoices(
+#             "MSSQL_PORT",
+#             AliasPath("MLOPS_RUNTIME_PARAM_MSSQL_PORT", "payload", "port")
+#         )
+#     )
+#     user: str = Field(
+#         validation_alias=AliasChoices(
+#             "MSSQL_USER",
+#             AliasPath("MLOPS_RUNTIME_PARAM_MSSQL_USER", "payload", "user")
+#         )
+#     )
+#     password: str = Field(
+#         validation_alias=AliasChoices(
+#             "MSSQL_PASSWORD",
+#             AliasPath("MLOPS_RUNTIME_PARAM_MSSQL_PASSWORD", "payload", "password")
+#         )
+#     )
+#     database: str = Field(
+#         validation_alias=AliasChoices(
+#             "MSSQL_DATABASE",
+#             AliasPath("MLOPS_RUNTIME_PARAM_MSSQL_DATABASE", "payload", "database")
+#         )
+#     )
+#     # schema: Optional[str] = Field(
+#     #     default="dbo",
+#     #     validation_alias=AliasChoices(
+#     #         "MSSQL_SCHEMA",
+#     #         AliasPath("MLOPS_RUNTIME_PARAM_MSSQL_SCHEMA", "payload", "schema")
+#     #     )
+#     # )
 
-    def is_configured(self) -> bool:
-        return bool(self.host and self.user and self.password and self.database)
+#     def is_configured(self) -> bool:
+#         return bool(self.host and self.user and self.password and self.database)
 
 
 class AzureOpenAICredentials(DRCredentials):
