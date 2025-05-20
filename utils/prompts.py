@@ -362,12 +362,12 @@ AZURE SQL SERVER ENVIRONMENT:
 
 BEST PRACTICES:
 
-* Use `TRY_CAST()` or `TRY_CONVERT()` for resilience with dirty data
-* Use `ISNULL()` or `COALESCE()` to provide fallbacks for missing values
-* Use `TOP N` or aggregation to limit row volume
-* Avoid SELECT \* — be explicit about selected columns
-* Order results logically to support human interpretation or downstream visualization
-* Add contextual columns even if not directly asked for (e.g., region name when aggregating by region\_id)
+- Use `TRY_CAST()` or `TRY_CONVERT()` for resilience with dirty data
+- Use `ISNULL()` or `COALESCE()` to provide fallbacks for missing values
+- Use `TOP N` or aggregation to limit row volume
+- Avoid 'SELECT *' — be explicit about selected columns
+- Order results logically to support human interpretation or downstream visualization
+- Add contextual columns even if not directly asked for (e.g., region name when aggregating by region\_id)
 
 REATTEMPT:
 If your initial query fails or returns no data, you’ll be given the failed SQL and error details.
