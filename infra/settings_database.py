@@ -17,5 +17,5 @@ from utils.schema import DatabaseConnectionType
 
 # Valid values are: "snowflake", "bigquery", "sap", "mssql", "azure_sql" or "no_database"
 DATABASE_CONNECTION_TYPE: DatabaseConnectionType = os.getenv(  # type: ignore[assignment]
-    "DATABASE_CONNECTION_TYPE", "no_database"
+    "DATABASE_CONNECTION_TYPE", "azure_sql"
 )
