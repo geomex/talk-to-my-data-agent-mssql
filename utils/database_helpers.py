@@ -42,7 +42,6 @@ from utils.credentials import (
     NoDatabaseCredentials,
     SAPDatasphereCredentials,
     SnowflakeCredentials,
-    MSSQLCredentials,
     AzureSQLCredentials
 )
 from utils.logging_helper import get_logger
@@ -1018,40 +1017,41 @@ class AzureSQLOperator(DatabaseOperator[AzureSQLCredentialArgs]):
         try:
             with self.create_connection() as conn:
                 conn.timeout = timeout
-                cursor = conn.cursor()
                 logger.info("Azure SQL connection established.")
-            for table in table_names:
-                try:
-                    table_name = table.split(".")[-1]
-                    qualified = (
-                        f"[{self._credentials.database}]."
-                        f"[{self._credentials.schema_name}]."
-                        f"[{table_name}]"
-                    )
-                    logger.info(f"Querying table: {qualified}")
-                    cursor.execute(
-                        f"SELECT TOP {sample_size} * FROM {qualified}")
-                    cols = [col[0] for col in cursor.description]
-                    rows = cursor.fetchall()
 
-                    pandas_df = pd.DataFrame.from_records(rows, columns=cols)
-                    polars_df = pl.DataFrame(pandas_df)  # ✅ Convert
-                    dataset = AnalystDataset(
-                        name=table_name, data=DataFrameWrapper(polars_df))
+                for table in table_names:
+                    try:
+                        table_name = table.split(".")[-1]
+                        qualified = (
+                            f"[{self._credentials.database}]."
+                            f"[{self._credentials.schema_name}]."
+                            f"[{table_name}]"
+                        )
+                        logger.info(f"Querying table: {qualified}")
+                        cursor = conn.cursor()
+                        cursor.execute(f"SELECT TOP {sample_size} * FROM {qualified}")
+                        cols = [col[0] for col in cursor.description]
+                        rows = cursor.fetchall()
 
-                    await analyst_db.register_dataset(
-                        dataset,
-                        data_source=DataSourceType.DATABASE
-                    )
+                        pandas_df = pd.DataFrame.from_records(rows, columns=cols)
+                        polars_df = pl.DataFrame(pandas_df)
+                        dataset = AnalystDataset(
+                            name=table_name, data=polars_df
+                        )
 
-                    logger.info(
-                        f"Successfully registered dataset for table: {table_name}")
-                    names.append(table_name)
-                except Exception as e:
-                    logger.error(f"Error loading table '{table}': {e}")
-                    continue
+                        await analyst_db.register_dataset(
+                            dataset, data_source=DataSourceType.DATABASE
+                        )
+
+                        logger.info(f"Successfully registered dataset for table: {table_name}")
+                        names.append(table_name)
+
+                    except Exception as e:
+                        logger.error(f"Error loading table '{table}': {e}")
+                        continue
 
             return names
+
         except Exception as e:
             logger.error(f"Error fetching Azure SQL data: {str(e)}")
             return []
