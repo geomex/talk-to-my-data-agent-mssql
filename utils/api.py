@@ -638,8 +638,12 @@ async def _generate_run_charts_python_code(
             role="user", content=f"Data Metadata:\n{dataframe_metadata}"
         ),
         ChatCompletionUserMessageParam(
-            role="user", content=f"Data top 25 rows:\n{df.head(25).to_string()}"
-        ),
+            role="user",
+            content=f"Data top 25 rows:\n{df.head(25).to_pandas().to_string(index=False) if hasattr(df, 'to_pandas') else df.head(25).to_string(index=False)}",
+        )
+        # ChatCompletionUserMessageParam(
+            # role="user", content=f"Data top 25 rows:\n{df.head(25).to_string()}"
+        # ),
     ]
     if validation_error:
         msg = type(validation_error).__name__ + f": {str(validation_error)}"
@@ -1182,6 +1186,7 @@ async def _generate_database_analysis_code(
     for table in request.dataset_names:
         df = (await analyst_db.get_dataset(table)).to_df().to_pandas()
 
+        # sample_str = f"Table: {table}\n{format_df_sample(df)}"
         sample_str = f"Table: {table}\n{df.head(10).to_string()}"
         all_samples.append(sample_str)
 
