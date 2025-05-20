@@ -22,16 +22,19 @@ logging.basicConfig(level=logging.INFO)
 
 def get_logger(name: str = "DataAnalystBackend") -> logging.Logger:
     formatter = logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        "%(asctime)s - %(name)s - %(levelname)s - %(module)s.%(funcName)s - %(message)s"
     )
-    consoleHandle = logging.StreamHandler()
-    consoleHandle.setLevel(logging.INFO)
-    consoleHandle.setFormatter(formatter)
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(formatter)
+
     logger = logging.getLogger(name)
-    logger.propagate = False  # Prevent propagation to root logger
-    for handler in logger.handlers:
-        logger.removeHandler(handler)
-    logger.addHandler(consoleHandle)
+    logger.propagate = False  # Prevent double logging
+
+    # Clear existing handlers (avoid duplicates)
+    logger.handlers.clear()
+    logger.addHandler(console_handler)
+
     return logger
 
 
