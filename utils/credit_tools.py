@@ -28,21 +28,50 @@ def read_csv_with_encoding(file_path: str, **kwargs) -> pl.DataFrame:
             encodings.insert(0, detected['encoding'])
     
     # Try each encoding
+    last_error = None
     for encoding in encodings:
         try:
-            return pl.read_csv(file_path, encoding=encoding, **kwargs)
+            # Read the CSV file
+            df = pl.read_csv(file_path, encoding=encoding, **kwargs)
+            
+            # Ensure all column names are strings
+            df = df.rename({col: str(col) for col in df.columns})
+            
+            # Convert any period columns to string
+            for col in df.columns:
+                if 'period' in str(df[col].dtype).lower():
+                    df = df.with_columns(pl.col(col).cast(pl.Utf8))
+            
+            # Ensure the DataFrame is not empty
+            if df.height == 0:
+                raise ValueError("The CSV file is empty")
+                
+            # Convert to records format to validate
+            try:
+                _ = df.to_dicts()
+                return df
+            except Exception as e:
+                last_error = ValueError(f"Failed to convert DataFrame to records: {str(e)}")
+                continue
+                
         except Exception as e:
+            last_error = e
             continue
             
-    raise ValueError(f"Could not read file with any of the attempted encodings: {', '.join(encodings)}")
+    if last_error:
+        raise ValueError(f"Could not read file with any of the attempted encodings ({', '.join(encodings)}): {str(last_error)}")
+    else:
+        raise ValueError(f"Could not read file with any of the attempted encodings: {', '.join(encodings)}")
 
 def calculate_credit_quality(data: pl.DataFrame, 
-                           time_horizons: List[str] = ['CC02M', 'CC03M', 'CC04M', 'CC06M', 'CC12M'],
+                           time_horizons: List[str] = ['CC02M', 'CC03M', 'CC04M', 'CC05M', 'CC06M', 'CC09M', 'CC12M'],
                            thresholds: Dict[str, float] = {
                                'CC02M': 0.007,
                                'CC03M': 0.014, 
                                'CC04M': 0.047,
-                               'CC06M': 0.095
+                               'CC05M': 0.071,  # Interpolated value between CC04M and CC06M
+                               'CC06M': 0.095,
+                               'CC09M': 0.143   # Interpolated value between CC06M and CC12M
                            }) -> Tuple[pl.DataFrame, Dict[str, bool]]:
     """
     Calculate credit quality metrics and compare against thresholds.
@@ -50,7 +79,13 @@ def calculate_credit_quality(data: pl.DataFrame,
     Args:
         data: DataFrame containing credit data
         time_horizons: List of credit quality columns to analyze
-        thresholds: Dictionary of thresholds for each horizon
+        thresholds: Dictionary of thresholds for each horizon. Default values:
+            - CC02M: 0.7%
+            - CC03M: 1.4%
+            - CC04M: 4.7%
+            - CC05M: 7.1% (interpolated)
+            - CC06M: 9.5%
+            - CC09M: 14.3% (interpolated)
     
     Returns:
         Tuple containing:

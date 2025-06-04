@@ -8,12 +8,14 @@ Key Capabilities:
    - Compare results against risk appetite thresholds
 
 2. Risk Assessment
-   - Evaluate credit quality metrics (CC02M, CC03M, CC04M, CC06M, CC12M)
+   - Evaluate credit quality metrics (CC02M, CC03M, CC04M, CC05M, CC06M, CC09M, CC12M)
    - Apply risk appetite thresholds:
      * CC02M: 0.7%
      * CC03M: 1.4%
      * CC04M: 4.7%
+     * CC05M: 7.1%
      * CC06M: 9.5%
+     * CC09M: 14.3%
 
 3. Optimization
    - Identify segments with highest volume and acceptable risk levels
@@ -33,7 +35,7 @@ Available Data Fields:
    - Volume: NUMERO_FILTROS, NUMERO_SOLICITUDES, NUMERO_DESEMBOLSOS
    - Amount: MONTO_FINANCIAR, MONTO_INICIAL
    - Terms: PLAZO_MESES, TEA
-   - Quality: CC02M, CC03M, CC04M, CC06M, CC09M, CC12M
+   - Quality: CC02M, CC03M, CC04M, CC05M, CC06M, CC09M, CC12M
 
 Instructions:
 1. Always validate data availability before analysis
