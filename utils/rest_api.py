@@ -49,7 +49,6 @@ from utils.analyst_db import AnalystDB, DatasetMetadata, DataSourceType
 from utils.database_helpers import get_external_database
 from utils.logging_helper import get_logger
 from utils.tools import (
-    get_tools,
     get_credit_quality_system_prompt,
     get_credit_quality_examples
 )
