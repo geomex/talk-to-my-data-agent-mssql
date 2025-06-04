@@ -96,6 +96,50 @@ class AzureSQLCredentials(BaseSettings):
 #         return bool(self.host and self.user and self.password and self.database)
 
 
+# class MSSQLCredentials(DRCredentials):
+#     host: str = Field(
+#         validation_alias=AliasChoices(
+#             "MSSQL_USER",
+#             AliasPath("MLOPS_RUNTIME_PARAM_MSSQL_HOST", "payload", "host")
+#         )
+#     )
+#     port: int = Field(
+#         default=1433,
+#         validation_alias=AliasChoices(
+#             "MSSQL_PORT",
+#             AliasPath("MLOPS_RUNTIME_PARAM_MSSQL_PORT", "payload", "port")
+#         )
+#     )
+#     user: str = Field(
+#         validation_alias=AliasChoices(
+#             "MSSQL_USER",
+#             AliasPath("MLOPS_RUNTIME_PARAM_MSSQL_USER", "payload", "user")
+#         )
+#     )
+#     password: str = Field(
+#         validation_alias=AliasChoices(
+#             "MSSQL_PASSWORD",
+#             AliasPath("MLOPS_RUNTIME_PARAM_MSSQL_PASSWORD", "payload", "password")
+#         )
+#     )
+#     database: str = Field(
+#         validation_alias=AliasChoices(
+#             "MSSQL_DATABASE",
+#             AliasPath("MLOPS_RUNTIME_PARAM_MSSQL_DATABASE", "payload", "database")
+#         )
+#     )
+#     # schema: Optional[str] = Field(
+#     #     default="dbo",
+#     #     validation_alias=AliasChoices(
+#     #         "MSSQL_SCHEMA",
+#     #         AliasPath("MLOPS_RUNTIME_PARAM_MSSQL_SCHEMA", "payload", "schema")
+#     #     )
+#     # )
+
+#     def is_configured(self) -> bool:
+#         return bool(self.host and self.user and self.password and self.database)
+
+
 class AzureOpenAICredentials(DRCredentials):
     """LLM credentials auto-constructed using environment variables."""
 

@@ -347,18 +347,18 @@ Your response must be a **single Azure SQL query** returned in JSON using this f
 
 RESTRICTIONS:
 
-* ❌ Do NOT include schema-altering or DML operations (DELETE, INSERT, UPDATE, TRUNCATE, ALTER, DROP)
-* ❌ Do NOT use `USE [database]` statements
-* ✅ Do use `[schema].[table]` format for all tables
-* ✅ Do quote column and table names using square brackets (`[ ]`) to ensure case-sensitivity
-* ✅ Do add comments to clarify complex logic
-* ✅ Do handle formatting anomalies (e.g. dollar signs, NULLs, malformed strings)
+- Do NOT include schema-altering or DML operations (DELETE, INSERT, UPDATE, TRUNCATE, ALTER, DROP)
+- Do NOT use `USE [database]` statements
+- Do use `[schema].[table]` format for all tables
+- Do quote column and table names using square brackets (`[ ]`) to ensure case-sensitivity
+- Do add comments to clarify complex logic
+- Do handle formatting anomalies (e.g. dollar signs, NULLs, malformed strings)
 
 AZURE SQL SERVER ENVIRONMENT:
 
-* All connections use encrypted transport: `Encrypt=yes;TrustServerCertificate=no;`
-* Queries are executed programmatically via the `pyodbc` Python connector
-* The server contains tables with millions of rows, so use `TOP N`, `GROUP BY`, and filters where appropriate
+- All connections use encrypted transport: `Encrypt=yes;TrustServerCertificate=no;`
+- Queries are executed programmatically via the `pyodbc` Python connector
+- The server contains tables with millions of rows, so use `TOP N`, `GROUP BY`, and filters where appropriate
 
 BEST PRACTICES:
 
