@@ -118,13 +118,15 @@ def calculate_credit_quality(data: pl.DataFrame,
     
     for horizon in time_horizons:
         if horizon in data.columns:
-            # Calculate average credit quality for this horizon
-            avg_quality = data[horizon].mean()
-            metrics[horizon] = avg_quality
+            # Convert to float and handle any potential NaN values
+            horizon_data = data[horizon].astype(float)
+            # Calculate quality as sum/count (mean)
+            quality = horizon_data.sum() / len(data)
+            metrics[horizon] = quality
             
             # Compare against threshold if one exists
             if horizon in thresholds:
-                threshold_exceeded[horizon] = avg_quality > thresholds[horizon]
+                threshold_exceeded[horizon] = quality > thresholds[horizon]
                 
     return pl.DataFrame([metrics]), threshold_exceeded
 
@@ -255,8 +257,10 @@ def analyze_data(dfs):
         # Calculate quality metrics for all horizons
         for horizon in time_horizons:
             if horizon in data.columns:
+                # Convert to float and handle any potential NaN values
+                horizon_data = data[horizon].astype(float)
                 # Calculate quality as sum/count (mean)
-                quality = data[horizon].sum() / total_records
+                quality = horizon_data.sum() / total_records
                 metrics[horizon] = quality
             else:
                 logger.warning(f"Column {horizon} not found in data")
