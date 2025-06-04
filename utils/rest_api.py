@@ -48,6 +48,11 @@ from openai.types.chat.chat_completion_user_message_param import (
 from utils.analyst_db import AnalystDB, DatasetMetadata, DataSourceType
 from utils.database_helpers import get_external_database
 from utils.logging_helper import get_logger
+from utils.tools import (
+    get_tools,
+    get_credit_quality_system_prompt,
+    get_credit_quality_examples
+)
 
 sys.path.append("..")
 
@@ -972,31 +977,83 @@ async def run_complete_analysis_task(
     request: Request,
 ) -> None:
     """Run the complete analysis pipeline"""
-    source = DataSourceType(data_source)
-    datasets_names = []
-    if source == DataSourceType.DATABASE:
-        datasets_names = await analyst_db.list_analyst_datasets(source)
-    else:
-        datasets_names = (
-            await analyst_db.list_analyst_datasets(DataSourceType.REGISTRY)
-        ) + (await analyst_db.list_analyst_datasets(DataSourceType.FILE))
+    try:
+        # Check if this is a credit quality analysis request
+        is_credit_quality = any(
+            keyword in chat_request.messages[-1].content.lower()
+            for keyword in [
+                "credit quality",
+                "calidad de credito",
+                "calidad crediticia",
+                "riesgo de credito",
+                "credit risk",
+                "cc02m",
+                "cc03m",
+                "cc04m",
+                "cc06m",
+                "cc12m"
+            ]
+        )
 
-    run_analysis_iterator = run_complete_analysis(
-        chat_request=chat_request,
-        data_source=source,
-        datasets_names=datasets_names,
-        analyst_db=analyst_db,
-        chat_id=chat_id,
-        message_id=message_id,
-        enable_chart_generation=enable_chart_generation,
-        enable_business_insights=enable_business_insights,
-    )
+        # If credit quality analysis is needed, add the system prompt
+        if is_credit_quality:
+            chat_request.messages.insert(
+                0,
+                ChatCompletionSystemMessageParam(
+                    role="system",
+                    content=get_credit_quality_system_prompt()
+                )
+            )
+            
+            # Add example interactions if this is the first message
+            if len(chat_request.messages) == 2:  # Only system prompt and user message
+                for example in get_credit_quality_examples():
+                    chat_request.messages.insert(
+                        1,
+                        ChatCompletionUserMessageParam(
+                            role="user",
+                            content=example["user"]
+                        )
+                    )
+                    chat_request.messages.insert(
+                        2,
+                        ChatCompletionAssistantMessageParam(
+                            role="assistant",
+                            content=example["assistant"]
+                        )
+                    )
 
-    async for message in run_analysis_iterator:
-        if isinstance(message, AnalysisGenerationError):
-            break
+        # Continue with existing analysis pipeline
+        enhanced_question = await rephrase_message(chat_request)
+        
+        source = DataSourceType(data_source)
+        datasets_names = []
+        if source == DataSourceType.DATABASE:
+            datasets_names = await analyst_db.list_analyst_datasets(source)
         else:
-            pass
+            datasets_names = (
+                await analyst_db.list_analyst_datasets(DataSourceType.REGISTRY)
+            ) + (await analyst_db.list_analyst_datasets(DataSourceType.FILE))
+
+        run_analysis_iterator = run_complete_analysis(
+            chat_request=chat_request,
+            data_source=source,
+            datasets_names=datasets_names,
+            analyst_db=analyst_db,
+            chat_id=chat_id,
+            message_id=message_id,
+            enable_chart_generation=enable_chart_generation,
+            enable_business_insights=enable_business_insights,
+        )
+
+        async for message in run_analysis_iterator:
+            if isinstance(message, AnalysisGenerationError):
+                break
+            else:
+                pass
+
+    except Exception as e:
+        logger.error(f"Error running complete analysis: {str(e)}")
 
 
 @router.get("/user/datarobot-account")

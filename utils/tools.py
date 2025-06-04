@@ -77,3 +77,70 @@
 #             prediction_response["predictions"] = prediction_response[target_column]
 
 #     return prediction_response
+
+from typing import Any, Dict, List, Optional
+from utils.credit_tools import (
+    calculate_credit_quality,
+    filter_portfolio,
+    group_and_analyze,
+    identify_best_segments
+)
+from utils.credit_prompts import (
+    CREDIT_QUALITY_SYSTEM_PROMPT,
+    CREDIT_QUALITY_USER_PROMPT,
+    CREDIT_QUALITY_EXAMPLES
+)
+
+def get_tools() -> List[Dict[str, Any]]:
+    """Return list of available tools for analysis"""
+    return [
+        {
+            "name": "calculate_credit_quality",
+            "description": "Calculate credit quality metrics and compare against thresholds",
+            "parameters": {
+                "data": "DataFrame containing credit data",
+                "time_horizons": "List of credit quality columns to analyze",
+                "thresholds": "Dictionary of thresholds for each horizon"
+            }
+        },
+        {
+            "name": "filter_portfolio",
+            "description": "Filter credit portfolio based on user parameters",
+            "parameters": {
+                "data": "DataFrame containing credit data",
+                "filters": "Dictionary of column:values pairs to filter on"
+            }
+        },
+        {
+            "name": "group_and_analyze",
+            "description": "Group data and calculate metrics for each group",
+            "parameters": {
+                "data": "DataFrame containing credit data",
+                "group_cols": "Columns to group by",
+                "metric_cols": "Metrics to calculate",
+                "min_volume": "Minimum volume threshold for groups"
+            }
+        },
+        {
+            "name": "identify_best_segments",
+            "description": "Identify segments with highest volume and acceptable risk levels",
+            "parameters": {
+                "grouped_data": "Grouped DataFrame with metrics",
+                "volume_col": "Column name for volume metric",
+                "risk_cols": "Columns containing risk metrics",
+                "thresholds": "Risk thresholds for each metric"
+            }
+        }
+    ]
+
+def get_credit_quality_system_prompt() -> str:
+    """Return the system prompt for credit quality analysis"""
+    return CREDIT_QUALITY_SYSTEM_PROMPT
+
+def get_credit_quality_user_prompt() -> str:
+    """Return the user prompt for credit quality analysis"""
+    return CREDIT_QUALITY_USER_PROMPT
+
+def get_credit_quality_examples() -> List[Dict[str, str]]:
+    """Return example interactions for credit quality analysis"""
+    return CREDIT_QUALITY_EXAMPLES
