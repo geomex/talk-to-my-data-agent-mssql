@@ -17,6 +17,7 @@ import sys
 import warnings
 from collections import defaultdict
 from typing import cast
+from pathlib import Path
 
 import polars as pl
 import streamlit as st
@@ -47,6 +48,7 @@ from utils.schema import (
     DataDictionary,
     DataRegistryDataset,
 )
+from utils.credit_tools import read_csv_with_encoding
 
 warnings.filterwarnings("ignore")
 
@@ -56,12 +58,12 @@ Database = get_external_database()
 
 
 async def process_uploaded_file(file: UploadedFile) -> list[str]:
-    """Process a single uploaded file and return a list of (dataset_name, dataframe) tuples
+    """Process a single uploaded file and return a list of dataset names
 
     Args:
         file: The uploaded file object
     Returns:
-        list: List of (dataset_name, dataframe) tuples, or empty list if error
+        list: List of dataset names, or empty list if error
     """
     try:
         logger.info(f"Processing uploaded file: {file.name}")
@@ -71,7 +73,23 @@ async def process_uploaded_file(file: UploadedFile) -> list[str]:
         if file_extension == ".csv":
             logger.info(f"Loading CSV: {file.name}")
             log_memory()
-            df = pl.read_csv(file, infer_schema_length=10000, low_memory=True)
+            
+            # Save to temporary file first
+            temp_file = Path("/tmp") / f"{file.name}"
+            try:
+                temp_file.write_bytes(file.getvalue())
+                
+                # Use encoding-aware reader
+                df = read_csv_with_encoding(
+                    str(temp_file),
+                    infer_schema_length=10000,
+                    low_memory=True
+                )
+            finally:
+                # Clean up
+                if temp_file.exists():
+                    temp_file.unlink()
+                    
             log_memory()
             dataset_name = os.path.splitext(file.name)[0]
             results.append(AnalystDataset(name=dataset_name, data=df))
@@ -81,7 +99,6 @@ async def process_uploaded_file(file: UploadedFile) -> list[str]:
 
         elif file_extension in [".xlsx", ".xls"]:
             # Read all sheets
-
             base_name = os.path.splitext(file.name)[0]
             excel_sheets = pl.read_excel(file, sheet_id=0)
             for sheet_name, data in excel_sheets.items():
@@ -105,6 +122,7 @@ async def process_uploaded_file(file: UploadedFile) -> list[str]:
 
     except Exception as e:
         logger.error(f"Error loading {file.name}: {str(e)}", exc_info=True)
+        st.error(f"Error loading {file.name}: {str(e)}")
         return []
 
 

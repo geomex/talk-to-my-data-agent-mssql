@@ -1,6 +1,40 @@
 from typing import Dict, List, Optional, Tuple
 import pandas as pd
 import polars as pl
+import chardet
+
+def read_csv_with_encoding(file_path: str, **kwargs) -> pl.DataFrame:
+    """
+    Read a CSV file with automatic encoding detection.
+    
+    Args:
+        file_path: Path to the CSV file
+        **kwargs: Additional arguments to pass to pl.read_csv
+        
+    Returns:
+        pl.DataFrame: The loaded dataframe
+        
+    Raises:
+        ValueError: If the file cannot be read with any encoding
+    """
+    # List of encodings to try in order
+    encodings = ['utf-8', 'latin1', 'iso-8859-1', 'cp1252']
+    
+    # First try to detect encoding
+    with open(file_path, 'rb') as file:
+        raw_data = file.read()
+        detected = chardet.detect(raw_data)
+        if detected['confidence'] > 0.8:
+            encodings.insert(0, detected['encoding'])
+    
+    # Try each encoding
+    for encoding in encodings:
+        try:
+            return pl.read_csv(file_path, encoding=encoding, **kwargs)
+        except Exception as e:
+            continue
+            
+    raise ValueError(f"Could not read file with any of the attempted encodings: {', '.join(encodings)}")
 
 def calculate_credit_quality(data: pl.DataFrame, 
                            time_horizons: List[str] = ['CC02M', 'CC03M', 'CC04M', 'CC06M', 'CC12M'],
@@ -20,23 +54,29 @@ def calculate_credit_quality(data: pl.DataFrame,
     
     Returns:
         Tuple containing:
-        - DataFrame with quality metrics
-        - Dictionary indicating if each horizon meets threshold
+        - DataFrame with credit quality metrics
+        - Dictionary indicating which metrics exceed thresholds
     """
-    quality_metrics = {}
-    threshold_met = {}
+    # Validate input data has required columns
+    missing_cols = [col for col in time_horizons if col not in data.columns]
+    if missing_cols:
+        raise ValueError(f"Missing required columns: {', '.join(missing_cols)}")
+        
+    # Calculate credit quality metrics
+    metrics = {}
+    threshold_exceeded = {}
     
-    # Calculate quality for each horizon
     for horizon in time_horizons:
         if horizon in data.columns:
-            quality = data[horizon].mean()
-            quality_metrics[horizon] = quality
+            # Calculate average credit quality for this horizon
+            avg_quality = data[horizon].mean()
+            metrics[horizon] = avg_quality
             
-            # Compare against threshold if available
+            # Compare against threshold if one exists
             if horizon in thresholds:
-                threshold_met[horizon] = quality <= thresholds[horizon]
-    
-    return pd.DataFrame([quality_metrics]), threshold_met
+                threshold_exceeded[horizon] = avg_quality > thresholds[horizon]
+                
+    return pl.DataFrame([metrics]), threshold_exceeded
 
 def filter_portfolio(data: pl.DataFrame,
                     filters: Dict[str, List[str]]) -> pl.DataFrame:
@@ -46,17 +86,19 @@ def filter_portfolio(data: pl.DataFrame,
     Args:
         data: DataFrame containing credit data
         filters: Dictionary of column:values pairs to filter on
-    
+        
     Returns:
         Filtered DataFrame
     """
-    filtered_df = data.clone()
+    filtered_data = data
     
-    for col, values in filters.items():
-        if col in filtered_df.columns:
-            filtered_df = filtered_df.filter(pl.col(col).is_in(values))
+    for column, values in filters.items():
+        if column in data.columns:
+            filtered_data = filtered_data.filter(
+                pl.col(column).is_in(values)
+            )
             
-    return filtered_df
+    return filtered_data
 
 def group_and_analyze(data: pl.DataFrame,
                      group_cols: List[str],
@@ -70,33 +112,37 @@ def group_and_analyze(data: pl.DataFrame,
         group_cols: Columns to group by
         metric_cols: Metrics to calculate
         min_volume: Minimum volume threshold for groups
-    
+        
     Returns:
         DataFrame with grouped metrics
     """
-    # Ensure all group columns exist
-    valid_group_cols = [col for col in group_cols if col in data.columns]
+    # Validate columns exist
+    missing_group_cols = [col for col in group_cols if col not in data.columns]
+    missing_metric_cols = [col for col in metric_cols if col not in data.columns]
+    
+    if missing_group_cols or missing_metric_cols:
+        raise ValueError(
+            f"Missing columns: {', '.join(missing_group_cols + missing_metric_cols)}"
+        )
     
     # Group and aggregate
-    grouped = data.groupby(valid_group_cols).agg([
-        pl.col(metric).mean().alias(f"{metric}_AVG")
-        for metric in metric_cols if metric in data.columns
-    ] + [
-        pl.count().alias("VOLUME")
+    grouped = data.groupby(group_cols).agg([
+        pl.col(col).mean().alias(f"{col}_avg")
+        for col in metric_cols
     ])
     
-    # Filter for minimum volume
-    return grouped.filter(pl.col("VOLUME") >= min_volume)
+    # Add volume metric
+    grouped = grouped.with_columns(
+        volume=pl.len()
+    )
+    
+    # Filter by minimum volume
+    return grouped.filter(pl.col("volume") >= min_volume)
 
 def identify_best_segments(grouped_data: pl.DataFrame,
-                         volume_col: str = "VOLUME",
-                         risk_cols: List[str] = ['CC02M_AVG', 'CC03M_AVG', 'CC04M_AVG', 'CC06M_AVG'],
-                         thresholds: Dict[str, float] = {
-                             'CC02M_AVG': 0.007,
-                             'CC03M_AVG': 0.014,
-                             'CC04M_AVG': 0.047,
-                             'CC06M_AVG': 0.095
-                         }) -> pl.DataFrame:
+                         volume_col: str,
+                         risk_cols: List[str],
+                         thresholds: Dict[str, float]) -> pl.DataFrame:
     """
     Identify segments with highest volume and acceptable risk levels.
     
@@ -105,17 +151,18 @@ def identify_best_segments(grouped_data: pl.DataFrame,
         volume_col: Column name for volume metric
         risk_cols: Columns containing risk metrics
         thresholds: Risk thresholds for each metric
-    
+        
     Returns:
         DataFrame with best performing segments
     """
-    # Filter for segments meeting all thresholds
-    mask = pl.lit(True)
+    filtered_data = grouped_data
+    
+    # Filter segments that meet all risk thresholds
     for col, threshold in thresholds.items():
         if col in grouped_data.columns:
-            mask = mask & (pl.col(col) <= threshold)
-    
-    compliant_segments = grouped_data.filter(mask)
-    
+            filtered_data = filtered_data.filter(
+                pl.col(col) <= threshold
+            )
+            
     # Sort by volume descending
-    return compliant_segments.sort(volume_col, descending=True) 
+    return filtered_data.sort(volume_col, descending=True) 

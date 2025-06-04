@@ -53,6 +53,7 @@ from utils.tools import (
     get_credit_quality_system_prompt,
     get_credit_quality_examples
 )
+from utils.credit_tools import read_csv_with_encoding
 
 sys.path.append("..")
 
@@ -406,11 +407,24 @@ async def upload_files(
                 if file_extension == ".csv":
                     logger.info(f"Loading CSV: {file.filename}")
                     log_memory()
-                    df = pl.read_csv(
-                        io.StringIO(contents.decode("utf-8")),
-                        infer_schema_length=10000,
-                        low_memory=True,
-                    )
+                    
+                    # Save contents to a temporary file
+                    temp_file = Path("/tmp") / f"{uuid.uuid4()}.csv"
+                    try:
+                        with open(temp_file, "wb") as f:
+                            f.write(contents)
+                        
+                        # Use the new encoding-aware reader
+                        df = read_csv_with_encoding(
+                            str(temp_file),
+                            infer_schema_length=10000,
+                            low_memory=True
+                        )
+                    finally:
+                        # Clean up temp file
+                        if temp_file.exists():
+                            temp_file.unlink()
+                    
                     log_memory()
                     dataset_name = os.path.splitext(file.filename)[0]
                     dataset = AnalystDataset(name=dataset_name, data=df)
