@@ -233,50 +233,67 @@ def analyze_data(dfs):
     # Convert to pandas for easier manipulation
     df = df.to_pandas()
 
-    # Define the time horizons and thresholds for credit quality analysis
-    time_horizons = ['CC02M', 'CC03M', 'CC04M', 'CC06M', 'CC09M', 'CC12M']
+    # Define all time horizons for calculation
+    time_horizons = ['CC02M', 'CC03M', 'CC04M', 'CC05M', 'CC06M', 'CC12M']
+    
+    # Define only the thresholds we need to check against appetite
     thresholds = {
-        'CC02M': 0.007,
-        'CC03M': 0.014,
-        'CC04M': 0.047,
-        'CC06M': 0.095,
-        'CC09M': 0.143,
-        'CC12M': 0.2  # Added threshold for CC12M
+        'CC02M': 0.007,  # 0.7%
+        'CC03M': 0.014,  # 1.4%
+        'CC04M': 0.047,  # 4.7%
+        'CC06M': 0.095   # 9.5%
     }
 
-    # Calculate credit quality metrics and compare against thresholds
-    def calculate_credit_quality(data, time_horizons, thresholds):
+    def calculate_credit_quality(data, time_horizons):
+        """
+        Calculate credit quality metrics for all horizons.
+        Returns both the metrics and a validation against thresholds where applicable.
+        """
         metrics = {}
-        # Only calculate metrics for columns that exist in the data
+        total_records = len(data)
+        
+        # Calculate quality metrics for all horizons
         for horizon in time_horizons:
             if horizon in data.columns:
-                metrics[horizon] = data[horizon].mean()
+                # Calculate quality as sum/count (mean)
+                quality = data[horizon].sum() / total_records
+                metrics[horizon] = quality
             else:
                 logger.warning(f"Column {horizon} not found in data")
-                
-        # Only check thresholds that exist in both metrics and thresholds
+        
+        # Check against appetite thresholds where applicable
         exceeds_thresholds = {
-            horizon: metrics.get(horizon, 0) > thresholds[horizon]
-            for horizon in thresholds.keys()
+            horizon: metrics.get(horizon, 0) > threshold
+            for horizon, threshold in thresholds.items()
             if horizon in metrics
         }
+        
         return pd.DataFrame([metrics]), exceeds_thresholds
 
-    credit_quality_df, exceeds_thresholds = calculate_credit_quality(df, time_horizons, thresholds)
+    # Calculate overall credit quality
+    credit_quality_df, exceeds_thresholds = calculate_credit_quality(df, time_horizons)
 
-    # Filter segments that are within risk appetite thresholds
-    segments_within_thresholds = []
-    if 'SEGMENTO_FILTRO' in df.columns:
-        for segment in df['SEGMENTO_FILTRO'].unique():
-            segment_data = df[df['SEGMENTO_FILTRO'] == segment]
-            _, segment_exceeds_thresholds = calculate_credit_quality(segment_data, time_horizons, thresholds)
-            if not any(segment_exceeds_thresholds.values()):
-                segments_within_thresholds.append(segment)
-
-        # Create a result dataframe with segments within thresholds
-        result_df = pd.DataFrame({'SEGMENTO_FILTRO': segments_within_thresholds})
-    else:
-        logger.warning("Column 'SEGMENTO_FILTRO' not found in data")
-        result_df = credit_quality_df  # Return overall metrics if segmentation not possible
+    # If NROSCOREPREMIUM exists, create ranges and analyze by groups
+    result_df = credit_quality_df
+    if 'NROSCOREPREMIUM' in df.columns:
+        # Create score ranges (you might want to adjust these ranges)
+        df['SCORE_RANGE'] = pd.qcut(df['NROSCOREPREMIUM'], q=5, labels=['Very Low', 'Low', 'Medium', 'High', 'Very High'])
+        
+        # Group by score range and calculate metrics
+        grouped_results = []
+        for score_range in df['SCORE_RANGE'].unique():
+            group_data = df[df['SCORE_RANGE'] == score_range]
+            group_metrics, group_exceeds = calculate_credit_quality(group_data, time_horizons)
+            
+            # Add score range and count information
+            group_metrics['SCORE_RANGE'] = score_range
+            group_metrics['COUNT'] = len(group_data)
+            
+            grouped_results.append(group_metrics)
+        
+        if grouped_results:
+            result_df = pd.concat(grouped_results, ignore_index=True)
+            # Sort by CC02M (as per workflow) and count
+            result_df = result_df.sort_values(['CC02M', 'COUNT'], ascending=[True, False])
 
     return {'data': result_df} 
