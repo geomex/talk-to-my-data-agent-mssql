@@ -21,6 +21,7 @@ export const InitialPrompt = ({
     enableChartGeneration,
     enableBusinessInsights,
     dataSource: globalDataSource,
+    language,
   } = useAppState();
   const { data: chats } = useFetchAllChats();
   const { mutate } = usePostMessage();
@@ -47,6 +48,7 @@ export const InitialPrompt = ({
         enableChartGeneration,
         enableBusinessInsights,
         dataSource: chatDataSource,
+        language,
       });
       setMessage("");
     }
@@ -58,14 +60,16 @@ export const InitialPrompt = ({
         <div className="w-[400px] flex flex-col flex-1 items-center justify-center">
           <img src={chatMidnight} alt="" />
           <h4 className="mb-2 mt-4">
-            <strong className=" text-center font-semibold">
-              Type a question about your dataset
+            <strong className="text-center font-semibold">
+              {language === "es" 
+                ? "Escribe una pregunta sobre tu conjunto de datos"
+                : "Type a question about your dataset"}
             </strong>
           </h4>
           <p className="text-center mb-10">
-            Ask specific questions about your datasets to get insights, generate
-            visualizations, and discover patterns. Include column names and the
-            kind of analysis you're looking for to get more accurate results.
+            {language === "es"
+              ? "Haz preguntas específicas sobre tus conjuntos de datos para obtener insights, generar visualizaciones y descubrir patrones. Incluye nombres de columnas y el tipo de análisis que buscas para obtener resultados más precisos."
+              : "Ask specific questions about your datasets to get insights, generate visualizations, and discover patterns. Include column names and the kind of analysis you're looking for to get more accurate results."}
           </p>
           <PromptInput
             icon={FontAwesomeIcon}
@@ -85,8 +89,12 @@ export const InitialPrompt = ({
             value={message}
             placeholder={
               isDisabled
-                ? "Please upload and process data using the sidebar before starting the chat"
-                : "Ask another question about your datasets."
+                ? language === "es"
+                  ? "Por favor, sube y procesa datos usando la barra lateral antes de iniciar el chat"
+                  : "Please upload and process data using the sidebar before starting the chat"
+                : language === "es"
+                  ? "Haz una pregunta sobre tus conjuntos de datos."
+                  : "Ask a question about your datasets."
             }
           />
         </div>

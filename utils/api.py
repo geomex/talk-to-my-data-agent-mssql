@@ -985,10 +985,17 @@ async def get_business_analysis(
         # Get first 1000 rows as CSV with quoted values for context
         df_csv = df.head(750).to_csv(index=False, quoting=1)
 
+        # Select prompt based on language
+        system_prompt = (
+            prompts.SYSTEM_PROMPT_BUSINESS_ANALYSIS_ES 
+            if request.language == "es" 
+            else prompts.SYSTEM_PROMPT_BUSINESS_ANALYSIS
+        )
+
         # Create messages for OpenAI
         messages: list[ChatCompletionMessageParam] = [
             ChatCompletionSystemMessageParam(
-                role="system", content=prompts.SYSTEM_PROMPT_BUSINESS_ANALYSIS
+                role="system", content=system_prompt
             ),
             ChatCompletionUserMessageParam(
                 role="user",

@@ -489,6 +489,7 @@ class GetBusinessAnalysisRequest(BaseModel):
     dataset: AnalystDataset
     dictionary: DataDictionary
     question: str
+    language: Literal["en", "es"] = "en"  # Default to English
 
 
 class ChatRequest(BaseModel):
@@ -667,6 +668,7 @@ class ChatMessagePayload(BaseModel):
     enable_chart_generation: bool = True
     enable_business_insights: bool = True
     data_source: str = "file"
+    language: Literal["en", "es"] = "en"  # Default to English
 
 
 class DownloadedRegistryDataset(BaseModel):

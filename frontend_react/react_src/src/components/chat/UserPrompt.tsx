@@ -23,6 +23,7 @@ export const UserPrompt = ({
     enableChartGeneration,
     enableBusinessInsights,
     dataSource: globalDataSource,
+    language,
   } = useAppState();
   const { data: chats } = useFetchAllChats();
   const isDisabled = !allowedDataSources?.[0];
@@ -49,33 +50,38 @@ export const UserPrompt = ({
         enableChartGeneration,
         enableBusinessInsights,
         dataSource: chatDataSource,
+        language,
       });
       setMessage("");
     }
   };
 
   return (
-    <PromptInput
-      icon={FontAwesomeIcon}
-      iconProps={{
-        icon: isDisabled ? null : faPaperPlane,
-        behavior: "append",
-        onClick: sendMessage,
-      }}
-      placeholder={
-        isDisabled
-          ? "Please upload and process data using the sidebar before starting the chat"
-          : "Ask another question about your datasets."
-      }
-      onKeyDown={(e) => {
-        if (e.key === "Enter" && allowSend) {
-          sendMessage();
+    <div className="flex items-center gap-2 p-4 border-t">
+      <PromptInput
+        icon={FontAwesomeIcon}
+        iconProps={{
+          icon: isDisabled ? null : faPaperPlane,
+          behavior: "append",
+          onClick: sendMessage,
+        }}
+        disabled={isDisabled}
+        aria-disabled={isDisabled}
+        onChange={(e) => setMessage(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            sendMessage();
+          }
+        }}
+        value={message}
+        placeholder={
+          isDisabled
+            ? "Please upload and process data using the sidebar before starting the chat"
+            : language === "es" 
+              ? "Haz otra pregunta sobre tus datos."
+              : "Ask another question about your datasets."
         }
-      }}
-      disabled={isDisabled}
-      aria-disabled={isDisabled}
-      onChange={(e) => setMessage(e.target.value)}
-      value={message}
-    />
+      />
+    </div>
   );
 };
