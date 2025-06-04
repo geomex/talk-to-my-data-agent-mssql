@@ -295,66 +295,58 @@ class UnifiedRenderer:
 async def run_complete_analysis_st(
     chat_request: ChatRequest, error_context: dict[str, Any]
 ) -> None:
-    """Run the complete analysis pipeline"""
-    renderer = UnifiedRenderer(is_live=True)
+    try:
+        selected_datasets = [
+            name
+            for name in st.session_state.datasets_names
+            if st.session_state.get(f"dataset_{name}", False)
+        ]
+        if not selected_datasets:
+            st.error(
+                "Please select at least one dataset to analyze." if st.session_state.language == "en" else "Por favor seleccione al menos un conjunto de datos para analizar."
+            )
+            return
 
-    logger.info("start analysis")
-    logger.info(f"Current Chat name: {st.session_state.current_chat_name}")
-    with st.chat_message("assistant", avatar="bot.jpg"):
-        containers = RenderContainers(
-            rephrase=st.container(),
-            bottom_line=st.container(),
-            analysis=st.container(),
-            charts=st.container(),
-            insights=st.container(),
-            followup=st.container(),
+        renderer = UnifiedRenderer()
+        run_analysis_iterator = run_complete_analysis(
+            chat_request=chat_request,
+            data_source=st.session_state.data_source,
+            datasets_names=selected_datasets,
+            analyst_db=st.session_state.analyst_db,
+            chat_id=st.session_state.current_chat_id,
+            message_id=st.session_state.chat_messages[-1].id,
+            enable_chart_generation=st.session_state.enable_chart_generation,
+            enable_business_insights=st.session_state.enable_business_insights,
+            language=st.session_state.language,
         )
-        renderer.set_containers(containers)
 
-        try:
-            selected_datasets = [
-                dataset_name
-                for dataset_name in st.session_state.datasets_names
-                if st.session_state[f"dataset_{dataset_name}"]
-            ]
-            run_analysis_iterator = run_complete_analysis(
-                chat_request=chat_request,
-                data_source=st.session_state.data_source,
-                datasets_names=selected_datasets,
-                analyst_db=st.session_state.analyst_db,
-                chat_id=st.session_state.current_chat_id,
-                message_id=st.session_state.chat_messages[-1].id,
-                enable_chart_generation=st.session_state.enable_chart_generation,
-                enable_business_insights=st.session_state.enable_business_insights,
-            )
-            with st.spinner("Analysing question..."):
-                enhanced_message = await anext(run_analysis_iterator)
-
-            assistant_message = AnalystChatMessage(
-                role="assistant",
-                content=enhanced_message,
-                components=[
-                    EnhancedQuestionGeneration(enhanced_user_message=enhanced_message)
-                ],
-            )
-            await renderer.render_message(assistant_message, within_chat_context=True)
-
-            with st.spinner("Generating insights..."):
-                async for message in run_analysis_iterator:
-                    if isinstance(message, AnalysisGenerationError):
-                        st.error(message.message)
-                        break
-                    else:
-                        assistant_message.components.append(message)
+        with st.spinner("Analysing question..."):
+            async for message in run_analysis_iterator:
+                if isinstance(message, str):
+                    # This is the enhanced message
+                    enhanced_message = message
+                    assistant_message = AnalystChatMessage(
+                        role="assistant",
+                        content=enhanced_message,
+                        components=[
+                            EnhancedQuestionGeneration(enhanced_user_message=enhanced_message)
+                        ],
+                    )
+                    await renderer.render_message(assistant_message, within_chat_context=True)
+                elif isinstance(message, AnalysisGenerationError):
+                    st.error(message.message)
+                    break
+                else:
+                    assistant_message.components.append(message)
                     await renderer.render_message(
                         assistant_message, within_chat_context=True
                     )
 
             st.session_state.chat_messages.append(assistant_message)
-        except Exception as e:
-            error_context["component"] = "main_process"
-            log_error_details(e, error_context)
-            st.error(f"Error processing chat and analysis: {str(e)}")
+    except Exception as e:
+        error_context["component"] = "main_process"
+        log_error_details(e, error_context)
+        st.error(f"Error processing chat and analysis: {str(e)}")
 
 
 # Initialize session state variables
