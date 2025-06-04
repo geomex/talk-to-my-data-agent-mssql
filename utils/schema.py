@@ -43,6 +43,7 @@ from pydantic import (
     model_validator,
 )
 from typing_extensions import TypedDict
+import numpy as np
 
 from .code_execution import MaxReflectionAttempts
 
@@ -64,9 +65,25 @@ class DataFrameWrapper:
         self.df = df
 
     def to_dict(self) -> list[dict[str, Any]]:
-        records = self.df.to_dicts()
-        # records_str = [{str(k): v for k, v in record.items()} for record in records]
-        return records
+        try:
+            records = self.df.to_dicts()
+            # Ensure all keys are strings and handle any special types
+            records_str = [{str(k): self._convert_value(v) for k, v in record.items()} for record in records]
+            return records_str
+        except Exception as e:
+            raise ValueError(f"Failed to convert DataFrame to records: {str(e)}")
+
+    def _convert_value(self, value: Any) -> Any:
+        """Convert special types to JSON-serializable format."""
+        if pd.isna(value):
+            return None
+        if isinstance(value, (pd.Timestamp, datetime)):
+            return value.isoformat()
+        if isinstance(value, (np.int64, np.int32)):
+            return int(value)
+        if isinstance(value, (np.float64, np.float32)):
+            return float(value)
+        return value
 
     @classmethod
     def __get_validators__(
@@ -79,23 +96,42 @@ class DataFrameWrapper:
         # Accept an already wrapped instance.
         if isinstance(v, cls):
             return v
+        
+        # Handle pandas DataFrame
         if isinstance(v, pd.DataFrame):
-            for c in v.columns:
-                if "period" in str(v[c].dtype):
-                    v[c] = v[c].astype(str)
-            df = pl.DataFrame._from_pandas(v)
+            # Convert any special types
+            df_copy = v.copy()
+            for c in df_copy.columns:
+                if "period" in str(df_copy[c].dtype):
+                    df_copy[c] = df_copy[c].astype(str)
+                elif pd.api.types.is_datetime64_any_dtype(df_copy[c]):
+                    df_copy[c] = df_copy[c].dt.strftime('%Y-%m-%dT%H:%M:%S')
+            df = pl.DataFrame._from_pandas(df_copy)
             return cls(df)
+        
+        # Handle polars DataFrame
         if isinstance(v, pl.DataFrame):
             return cls(v)
+        
+        # Handle list of records
         elif isinstance(v, list):
             try:
-                df = pl.DataFrame(v)
+                # Ensure all dictionary keys are strings
+                records = []
+                for record in v:
+                    if not isinstance(record, dict):
+                        raise ValueError("Each record must be a dictionary")
+                    record_str = {str(k): record[k] for k in record}
+                    records.append(record_str)
+                
+                df = pl.DataFrame(records)
                 return cls(df)
             except Exception as e:
                 raise ValueError(
-                    "Invalid data format; expecting a list of records"
+                    f"Invalid data format; expecting a list of records. Error: {str(e)}"
                 ) from e
-        raise ValueError("data must be either a pandas DataFrame or a list of records")
+        
+        raise ValueError("data must be either a pandas DataFrame, polars DataFrame, or a list of records")
 
     @classmethod
     def __get_pydantic_json_schema__(
