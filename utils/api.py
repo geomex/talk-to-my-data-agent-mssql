@@ -30,6 +30,7 @@ from typing import (
     Type,
     TypeVar,
     cast,
+    Union,
 )
 
 import datarobot as dr
@@ -1341,18 +1342,75 @@ async def execute_business_analysis_and_charts(
         return None, business_result
 
 
+@log_api_call
 async def run_complete_analysis(
     chat_request: ChatRequest,
-    data_source: DataSourceType,
+    data_source: str,
     datasets_names: list[str],
     analyst_db: AnalystDB,
     chat_id: str,
     message_id: str,
     enable_chart_generation: bool = True,
     enable_business_insights: bool = True,
-) -> AsyncGenerator[Component | AnalysisGenerationError, None]:
-    # Get enhanced message
+    language: str = "en",
+) -> AsyncGenerator[
+    Union[str, RunAnalysisResult, RunChartsResult, GetBusinessAnalysisResult], None
+]:
+    """Run the complete analysis pipeline"""
     try:
+        # Select appropriate system prompt based on language
+        system_prompt = (
+            prompts.SYSTEM_PROMPT_BUSINESS_ANALYSIS_ES 
+            if language == "es" 
+            else prompts.SYSTEM_PROMPT_BUSINESS_ANALYSIS
+        )
+
+        # Check if this is a credit quality analysis request
+        is_credit_quality = any(
+            keyword in chat_request.messages[-1].content.lower()
+            for keyword in [
+                "credit quality",
+                "calidad de credito",
+                "calidad crediticia",
+                "riesgo de credito",
+                "credit risk",
+                "cc02m",
+                "cc03m",
+                "cc04m",
+                "cc06m",
+                "cc12m"
+            ]
+        )
+
+        # If credit quality analysis is needed, add the system prompt
+        if is_credit_quality:
+            chat_request.messages.insert(
+                0,
+                ChatCompletionSystemMessageParam(
+                    role="system",
+                    content=get_credit_quality_system_prompt()
+                )
+            )
+            
+            # Add example interactions if this is the first message
+            if len(chat_request.messages) == 2:  # Only system prompt and user message
+                for example in get_credit_quality_examples():
+                    chat_request.messages.insert(
+                        1,
+                        ChatCompletionUserMessageParam(
+                            role="user",
+                            content=example["user"]
+                        )
+                    )
+                    chat_request.messages.insert(
+                        2,
+                        ChatCompletionAssistantMessageParam(
+                            role="assistant",
+                            content=example["assistant"]
+                        )
+                    )
+
+        # Get enhanced message
         logger.info("Getting rephrased question...")
         enhanced_message = await rephrase_message(chat_request)
         logger.info("Getting rephrased question done")

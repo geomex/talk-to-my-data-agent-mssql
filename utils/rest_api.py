@@ -903,6 +903,7 @@ async def create_new_chat_message(
         payload.enable_chart_generation,
         payload.enable_business_insights,
         request,
+        language="en",
     )
 
     chat_list = await analyst_db.get_chat_list()
@@ -968,6 +969,7 @@ async def create_chat_message(
             payload.enable_chart_generation,
             payload.enable_business_insights,
             request,
+            language="en",
         )
 
     chat_list = await analyst_db.get_chat_list()
@@ -992,9 +994,17 @@ async def run_complete_analysis_task(
     enable_chart_generation: bool,
     enable_business_insights: bool,
     request: Request,
+    language: str = "en",
 ) -> None:
     """Run the complete analysis pipeline"""
     try:
+        # Select appropriate system prompt based on language
+        system_prompt = (
+            prompts.SYSTEM_PROMPT_BUSINESS_ANALYSIS_ES 
+            if language == "es" 
+            else prompts.SYSTEM_PROMPT_BUSINESS_ANALYSIS
+        )
+
         # Check if this is a credit quality analysis request
         is_credit_quality = any(
             keyword in chat_request.messages[-1].content.lower()
@@ -1018,13 +1028,13 @@ async def run_complete_analysis_task(
                 0,
                 ChatCompletionSystemMessageParam(
                     role="system",
-                    content=get_credit_quality_system_prompt()
+                    content=get_credit_quality_system_prompt(language)
                 )
             )
             
             # Add example interactions if this is the first message
             if len(chat_request.messages) == 2:  # Only system prompt and user message
-                for example in get_credit_quality_examples():
+                for example in get_credit_quality_examples(language):
                     chat_request.messages.insert(
                         1,
                         ChatCompletionUserMessageParam(

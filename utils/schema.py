@@ -493,15 +493,13 @@ class GetBusinessAnalysisRequest(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    """Request model for chat history processing
+    """Request model for chat messages"""
 
-    Attributes:
-        messages: list of dictionaries containing chat messages
-                 Each message must have 'role' and 'content' fields
-                 Role must be one of: 'user', 'assistant', 'system'
-    """
-
-    messages: list[ChatCompletionMessageParam] = Field(min_length=1)
+    messages: list[ChatCompletionMessageParam]
+    enable_chart_generation: bool = True
+    enable_business_insights: bool = True
+    data_source: str = "file"
+    language: Literal["en", "es"] = "en"  # Default to English
 
 
 class QuestionListGeneration(BaseModel):
