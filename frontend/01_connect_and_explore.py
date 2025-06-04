@@ -236,18 +236,18 @@ async def main() -> None:
     await state_init()
     logger.info("Starting App")
     with st.sidebar:
-        st.title("Connect")
+        st.title("Connect" if st.session_state.language == "en" else "Conectar")
 
         # Load Files expander containing file upload and the Data Registry
-        with st.expander("Load Files", expanded=True):
+        with st.expander("Load Files" if st.session_state.language == "en" else "Cargar Archivos", expanded=True):
             # File upload section
             col1, col2, col3 = st.columns([1, 4, 2])
             with col1:
                 st.image("csv_File_Logo.svg", width=25)
             with col2:
-                st.write("**Load Data Files**")
+                st.write("**Load Data Files**" if st.session_state.language == "en" else "**Cargar Archivos de Datos**")
             uploaded_files = st.file_uploader(
-                "Select 1 or multiple files",
+                "Select 1 or multiple files" if st.session_state.language == "en" else "Selecciona uno o más archivos",
                 type=["csv", "xlsx", "xls"],
                 accept_multiple_files=True,
                 key=st.session_state.file_uploader_key,
@@ -259,18 +259,17 @@ async def main() -> None:
             st.subheader("☁️   DataRobot Data Registry")
 
             # Get datasets from registry
-
-            with st.spinner("Loading datasets from the Data Registry..."):
+            with st.spinner("Loading datasets from the Data Registry..." if st.session_state.language == "en" else "Cargando conjuntos de datos del Registro..."):
                 with st.session_state.datarobot_connect.use_user_token():
                     datasets = [i.model_dump() for i in st_list_registry_datasets()]
 
             # Create form for dataset selection
             with st.form("registry_selection_form", border=False):
                 selected_registry_datasets = st.multiselect(
-                    "Select datasets from the Data Registry",
+                    "Select datasets from the Data Registry" if st.session_state.language == "en" else "Selecciona conjuntos de datos del Registro",
                     options=datasets,
                     format_func=lambda x: f"{x['name']} ({x['size']})",
-                    help="You can select multiple datasets",
+                    help="You can select multiple datasets" if st.session_state.language == "en" else "Puedes seleccionar múltiples conjuntos de datos",
                     key="selected_registry_datasets",
                     disabled=(
                         "analyst_db" not in st.session_state
@@ -280,7 +279,7 @@ async def main() -> None:
 
                 # Form submit button
                 submit_button = st.form_submit_button(
-                    "Load Datasets",
+                    "Load Datasets" if st.session_state.language == "en" else "Cargar Conjuntos de Datos",
                     disabled="analyst_db" not in st.session_state,
                 )
 
@@ -288,10 +287,10 @@ async def main() -> None:
                 if submit_button and len(selected_registry_datasets) > 0:
                     await registry_download_callback()
                 elif submit_button:
-                    st.warning("Please select at least one dataset")
+                    st.warning("Please select at least one dataset" if st.session_state.language == "en" else "Por favor, selecciona al menos un conjunto de datos")
 
         # Database expander
-        with st.expander("Database", expanded=False):
+        with st.expander("Database" if st.session_state.language == "en" else "Base de Datos", expanded=False):
             get_database_logo(app_infra)
 
             schema_tables = st_list_database_tables()
@@ -301,27 +300,27 @@ async def main() -> None:
                 selected_schema_tables = st.multiselect(
                     label=get_database_loader_message(app_infra),
                     options=schema_tables,
-                    help="You can select multiple tables",
+                    help="You can select multiple tables" if st.session_state.language == "en" else "Puedes seleccionar múltiples tablas",
                     key="selected_schema_tables",
                     disabled="analyst_db" not in st.session_state,
                 )
 
                 # Form submit button
                 submit_button = st.form_submit_button(
-                    "Load Selected Tables",
+                    "Load Selected Tables" if st.session_state.language == "en" else "Cargar Tablas Seleccionadas",
                     use_container_width=False,
                     disabled="analyst_db" not in st.session_state,
                 )
 
                 if submit_button:
                     if len(selected_schema_tables) == 0:
-                        st.warning("Please select at least one table")
+                        st.warning("Please select at least one table" if st.session_state.language == "en" else "Por favor, selecciona al menos una tabla")
                     else:
                         await load_from_database_callback()
 
         # Add Clear Data button after the Database expander
         if st.sidebar.button(
-            "Clear Data",
+            "Clear Data" if st.session_state.language == "en" else "Limpiar Datos",
             on_click=clear_data_callback,
             type="secondary",
             use_container_width=False,
@@ -331,19 +330,20 @@ async def main() -> None:
 
     # Main content area
     display_page_logo()
-    st.title("Explore")
+    st.title("Explore" if st.session_state.language == "en" else "Explorar")
     if "analyst_db" not in st.session_state:
-        st.warning("Could not identify user, please provide your API token")
+        st.warning("Could not identify user, please provide your API token" if st.session_state.language == "en" else "No se pudo identificar al usuario, por favor proporciona tu token API")
         return
 
     analyst_db = cast(AnalystDB, st.session_state.analyst_db)
     dataset_names = await analyst_db.list_analyst_datasets()
     # Main content area - conditional rendering based on cleansed data
     if not dataset_names:
-        st.info("Upload and process your data using the sidebar to get started")
+        st.info("Upload and process your data using the sidebar to get started" if st.session_state.language == "en" else "Sube y procesa tus datos usando la barra lateral para comenzar")
     else:
         for ds_display_name in dataset_names:
-            tab1, tab2 = st.tabs(["Raw Data", "Data Dictionary"])
+            tab1, tab2 = st.tabs(["Raw Data" if st.session_state.language == "en" else "Datos Crudos", 
+                                 "Data Dictionary" if st.session_state.language == "en" else "Diccionario de Datos"])
             with tab1:
                 ds_display = await analyst_db.get_dataset(ds_display_name)
                 st.subheader(f"{ds_display.name}")
@@ -355,7 +355,7 @@ async def main() -> None:
                     cleaning_report = ds_display_cleansed.cleaning_report
 
                     # Display cleaning report in expander
-                    with st.expander("View Cleaning Report"):
+                    with st.expander("View Cleaning Report" if st.session_state.language == "en" else "Ver Reporte de Limpieza"):
                         # Group reports by conversion type
                         conversions: defaultdict[str, list[CleansedColumnReport]] = (
                             defaultdict(list)

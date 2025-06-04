@@ -36,6 +36,16 @@ if "datarobot_connect" not in st.session_state:
     datarobot_connect = DataRobotTokenManager()
     st.session_state.datarobot_connect = datarobot_connect
 
+if "language" not in st.session_state:
+    st.session_state.language = "en"
+
+# Language selector in sidebar
+with st.sidebar:
+    st.session_state.language = st.selectbox(
+        "Language / Idioma",
+        options=["en", "es"],
+        format_func=lambda x: "English" if x == "en" else "Español",
+    )
 
 asyncio.run(
     st.session_state.datarobot_connect.display_info(

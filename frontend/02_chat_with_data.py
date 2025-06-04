@@ -414,7 +414,7 @@ async def main() -> None:
             clear_chat()
     # Sidebar with New Chat button only
     with st.sidebar:
-        st.title("Chat Controls")
+        st.title("Chat Controls" if st.session_state.language == "en" else "Controles de Chat")
 
         if app_infra.database != "no_database":
 
@@ -425,7 +425,7 @@ async def main() -> None:
                     st.session_state.data_source = DataSourceType.DATABASE
 
             st.radio(
-                "Database Mode",
+                "Database Mode" if st.session_state.language == "en" else "Modo de Base de Datos",
                 options=["Local", app_infra.database.title()],
                 key="database_mode",
                 horizontal=True,
@@ -437,18 +437,18 @@ async def main() -> None:
 
         # Chat History in expander
         if len(all_datasets) > 0:
-            with st.expander("Available Datasets", expanded=True):
+            with st.expander("Available Datasets" if st.session_state.language == "en" else "Conjuntos de Datos Disponibles", expanded=True):
                 for dataset_name in all_datasets:
                     st.checkbox(dataset_name, key=f"dataset_{dataset_name}", value=True)
 
             st.divider()
         st.checkbox(
-            "Generate charts in conversation",
+            "Generate charts in conversation" if st.session_state.language == "en" else "Generar gráficos en la conversación",
             value=True,
             key="enable_chart_generation",
         )
         st.checkbox(
-            "Enable business insights and follow up questions in conversation",
+            "Enable business insights and follow up questions in conversation" if st.session_state.language == "en" else "Habilitar insights de negocio y preguntas de seguimiento",
             value=True,
             key="enable_business_insights",
         )
@@ -461,7 +461,7 @@ async def main() -> None:
 
         with col1:
             st.button(
-                "New Chat",
+                "New Chat" if st.session_state.language == "en" else "Nuevo Chat",
                 on_click=clear_chat,
                 use_container_width=True,
                 type="primary",
@@ -561,7 +561,9 @@ async def main() -> None:
     )
     if not st.session_state.datasets_names and not st.session_state.chat_messages:
         st.info(
-            "Please upload and process data using the sidebar before starting the chat"
+            "Por favor, sube y procesa datos usando la barra lateral antes de iniciar el chat"
+            if st.session_state.language == "es"
+            else "Please upload and process data using the sidebar before starting the chat"
         )
     else:
         # Render existing chat history
@@ -583,7 +585,7 @@ async def main() -> None:
                 await renderer.render_message(message, within_chat_context=True)
         # Handle new chat input
         if question := st.chat_input(
-            "Ask a question about your data",
+            "Haz una pregunta sobre tus datos" if st.session_state.language == "es" else "Ask a question about your data",
         ):
             # Create and add user message
             user_message = AnalystChatMessage(
