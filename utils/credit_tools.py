@@ -2,6 +2,9 @@ from typing import Dict, List, Optional, Tuple
 import pandas as pd
 import polars as pl
 import chardet
+from utils.logging_helper import get_logger
+
+logger = get_logger()
 
 def read_csv_with_encoding(file_path: str, **kwargs) -> pl.DataFrame:
     """
@@ -26,13 +29,17 @@ def read_csv_with_encoding(file_path: str, **kwargs) -> pl.DataFrame:
         detected = chardet.detect(raw_data)
         if detected['confidence'] > 0.8:
             encodings.insert(0, detected['encoding'])
+            logger.info(f"Detected encoding {detected['encoding']} with confidence {detected['confidence']}")
     
     # Try each encoding
     last_error = None
     for encoding in encodings:
         try:
+            logger.info(f"Attempting to read CSV with encoding: {encoding}")
+            
             # Read the CSV file
             df = pl.read_csv(file_path, encoding=encoding, **kwargs)
+            logger.info(f"Successfully read CSV with {len(df.columns)} columns and {df.height} rows")
             
             # Ensure all column names are strings
             df = df.rename({col: str(col) for col in df.columns})
@@ -41,27 +48,35 @@ def read_csv_with_encoding(file_path: str, **kwargs) -> pl.DataFrame:
             for col in df.columns:
                 if 'period' in str(df[col].dtype).lower():
                     df = df.with_columns(pl.col(col).cast(pl.Utf8))
+                    logger.info(f"Converted period column {col} to string")
             
             # Ensure the DataFrame is not empty
             if df.height == 0:
                 raise ValueError("The CSV file is empty")
-                
-            # Convert to records format to validate
+            
+            # Verify data can be converted to records
             try:
-                _ = df.to_dicts()
+                records = df.to_dicts()
+                logger.info(f"Successfully converted DataFrame to {len(records)} records")
                 return df
             except Exception as e:
                 last_error = ValueError(f"Failed to convert DataFrame to records: {str(e)}")
+                logger.error(f"Failed to convert DataFrame to records: {str(e)}")
                 continue
                 
         except Exception as e:
             last_error = e
+            logger.error(f"Failed to read CSV with encoding {encoding}: {str(e)}")
             continue
             
     if last_error:
-        raise ValueError(f"Could not read file with any of the attempted encodings ({', '.join(encodings)}): {str(last_error)}")
+        error_msg = f"Could not read file with any of the attempted encodings ({', '.join(encodings)}): {str(last_error)}"
+        logger.error(error_msg)
+        raise ValueError(error_msg)
     else:
-        raise ValueError(f"Could not read file with any of the attempted encodings: {', '.join(encodings)}")
+        error_msg = f"Could not read file with any of the attempted encodings: {', '.join(encodings)}"
+        logger.error(error_msg)
+        raise ValueError(error_msg)
 
 def calculate_credit_quality(data: pl.DataFrame, 
                            time_horizons: List[str] = ['CC02M', 'CC03M', 'CC04M', 'CC05M', 'CC06M', 'CC09M', 'CC12M'],

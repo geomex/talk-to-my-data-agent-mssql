@@ -705,7 +705,7 @@ async def _generate_run_analysis_python_code(
             all_descriptions.append(entry.description)
             all_data_types.append(entry.data_type)
 
-    # Create dictionary format for prompt
+    # Create dictionary format for dprompt
     dictionary_data = {
         "columns": all_columns,
         "descriptions": all_descriptions,

@@ -419,22 +419,26 @@ async def upload_files(
                             infer_schema_length=10000,
                             low_memory=True
                         )
+                        
+                        # Convert to records format to match AI Catalog format
+                        df_records = df.to_dicts()
+                        dataset_name = os.path.splitext(file.filename)[0]
+                        dataset = AnalystDataset(name=dataset_name, data=df_records)
+                        
+                        logger.info(f"Successfully loaded {dataset_name} with {len(df_records)} records")
                     finally:
                         # Clean up temp file
                         if temp_file.exists():
                             temp_file.unlink()
                     
                     log_memory()
-                    dataset_name = os.path.splitext(file.filename)[0]
-                    dataset = AnalystDataset(name=dataset_name, data=df)
-
                     # Register dataset with the database
                     await analyst_db.register_dataset(
                         dataset, DataSourceType.FILE, file_size=file_size
                     )
 
                     # Add to processing queue
-                    dataset_names.append(dataset.name)
+                    dataset_names.append(dataset_name)
 
                     file_response: FileUploadResponse = {
                         "filename": file.filename,
