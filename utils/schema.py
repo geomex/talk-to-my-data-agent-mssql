@@ -541,6 +541,14 @@ DatabaseConnectionType = Literal["snowflake", "bigquery", "sap", "no_database"]
 class AppInfra(BaseModel):
     llm: str
     database: DatabaseConnectionType
+    use_cases: list[str] = Field(
+        default_factory=list,
+        description="List of use case names to filter datasets from DataRobot AI Catalog"
+    )
+    use_case_filter_enabled: bool = Field(
+        default=True,
+        description="Whether to enable use case filtering for dataset access"
+    )
 
 
 UserRoleType = Literal["assistant", "user", "system"]

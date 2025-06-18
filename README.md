@@ -192,6 +192,110 @@ The Talk to my Data Agent supports connecting to SAP Datasphere.
       pulumi up
       ```
 
+### Configure Use Case Filtering
+
+The Talk to My Data agent supports filtering datasets from the DataRobot AI Catalog based on use cases. This feature allows you to restrict access to only specific datasets that are relevant to your business domain.
+
+#### Enable Use Case Filtering
+
+**Method 1: Environment Variables (Recommended for development)**
+
+Add the following to your `.env` file:
+
+```bash
+# Enable use case filtering and specify which use cases to include
+USE_CASES='["credit_risk_modeling", "fraud_detection", "loan_approval"]'
+USE_CASE_FILTER_ENABLED=true
+```
+
+**Method 2: Pulumi Configuration (Recommended for production)**
+
+```bash
+# Set use cases via Pulumi config
+pulumi config set use_cases '["credit_risk_modeling", "fraud_detection", "loan_approval"]'
+pulumi config set use_case_filter_enabled true
+
+# Deploy the changes
+pulumi up
+```
+
+**Method 3: Infrastructure Configuration**
+
+The use case configuration will be automatically included in your `app_infra.json` file when you run `pulumi up`. The file will contain:
+
+```json
+{
+    "database": "no_database",
+    "llm": "azure_openai",
+    "use_cases": ["credit_risk_modeling", "fraud_detection", "loan_approval"],
+    "use_case_filter_enabled": true
+}
+```
+
+#### Disable Use Case Filtering
+
+To disable use case filtering and allow access to all datasets:
+
+**Environment Variables:**
+```bash
+USE_CASE_FILTER_ENABLED=false
+```
+
+**Pulumi Configuration:**
+```bash
+pulumi config set use_case_filter_enabled false
+pulumi up
+```
+
+#### Common Use Case Examples
+
+For credit analysis applications, you might use:
+```bash
+USE_CASES='["credit_risk_modeling", "fraud_detection", "loan_approval", "portfolio_management", "regulatory_reporting"]'
+```
+
+For general business intelligence:
+```bash
+USE_CASES='["customer_segmentation", "market_analysis", "sales_forecasting", "inventory_management"]'
+```
+
+#### How Use Case Filtering Works
+
+1. **Backend Configuration**: The filtering is applied at the backend API level (`/v1/registry/datasets`)
+2. **Automatic Application**: When no specific use cases are requested in the frontend, the configured use cases are automatically applied
+3. **Fallback Behavior**: If no use cases are configured, all datasets are returned
+4. **Override Capability**: The frontend can still request specific use cases that override the configuration
+
+#### Testing Use Case Configuration
+
+You can test your use case configuration using the provided test script:
+
+```bash
+python test_use_case_config.py
+```
+
+This will verify that your configuration is being read correctly from all sources.
+
+#### Configuration Priority
+
+The system reads use case configuration in this order:
+1. **Environment Variables** (highest priority)
+2. **Pulumi Configuration**
+3. **app_infra.json**
+4. **Default Values** (lowest priority)
+
+#### Troubleshooting
+
+- **No datasets appearing**: Check that your use cases exist in your DataRobot AI Catalog
+- **Configuration not applied**: Verify the environment variables or Pulumi config are set correctly
+- **Unexpected filtering**: Check the application logs for use case configuration details
+
+> **⚠️ Important notes:**
+> - Use case filtering only affects datasets from the DataRobot AI Catalog, not uploaded files or database connections
+> - The use cases must exist in your DataRobot AI Catalog for filtering to work
+> - If no use cases are configured, all available datasets will be shown
+> - Use case names are case-sensitive and must match exactly with your DataRobot AI Catalog
+
 ## Tools
 
 You can help the data analyst python agent by providing tools that can assist with data analysis tasks. For that, define functions in `utils/tools.py`. The function will be made available inside the code execution environment of the agent. The name, docstring and signature will be provided to the agent inside the prompt.

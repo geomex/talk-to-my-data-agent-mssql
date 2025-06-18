@@ -15,12 +15,12 @@ import { DATA_SOURCES } from "@/constants/dataSources";
 import { MultiSelect } from "@/components/ui-custom/multi-select";
 import { useState } from "react";
 import { FileUploader } from "./ui-custom/file-uploader";
-import { useFetchAllDatasets } from "@/api-state/datasets/hooks";
+import { useFetchAllDatasets, useFileUploadMutation, useAvailableUseCases } from "@/api-state/datasets/hooks";
 import {
   useGetDatabaseTables,
   useLoadFromDatabaseMutation,
 } from "@/api-state/database/hooks";
-import { useFileUploadMutation, UploadError } from "@/api-state/datasets/hooks";
+import { UploadError } from "@/api-state/datasets/hooks";
 import { Separator } from "@radix-ui/react-separator";
 import loader from "@/assets/loader.svg";
 import { useAppState } from "@/state/hooks";
@@ -30,7 +30,9 @@ import { TruncatedText } from "./ui-custom/truncated-text";
 
 export const AddDataModal = () => {
   const { data } = useFetchAllDatasets();
+  const { data: availableUseCases } = useAvailableUseCases();
   const [selectedDatasets, setSelectedDatasets] = useState<string[]>([]);
+  const [selectedUseCases, setSelectedUseCases] = useState<string[]>([]);
   const { data: dbTables } = useGetDatabaseTables();
   const [selectedTables, setSelectedTables] = useState<string[]>([]);
   const { setDataSource, dataSource } = useAppState();
@@ -38,6 +40,13 @@ export const AddDataModal = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [isPending, setIsPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Fetch datasets filtered by selected use cases
+  const { data: filteredDatasets } = useFetchAllDatasets({
+    limit: 100,
+    useCases: selectedUseCases.length > 0 ? selectedUseCases : undefined,
+    filterFailed: true // Exclude failed datasets by default
+  });
 
   const { mutate, progress } = useFileUploadMutation({
     onSuccess: () => {
@@ -98,11 +107,33 @@ export const AddDataModal = () => {
             </div>
             <FileUploader onFilesChange={setFiles} progress={progress} />
             <h4>Data Registry</h4>
-            <h6>Select one or more catalog items</h6>
+            <h6>Filter by Use Case (Recommended)</h6>
+            {availableUseCases && availableUseCases.length > 0 ? (
+              <MultiSelect
+                options={
+                  availableUseCases.map((useCase) => ({
+                    label: useCase.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+                    value: useCase,
+                  }))
+                }
+                onValueChange={setSelectedUseCases}
+                defaultValue={selectedUseCases}
+                placeholder="Select use cases to filter datasets..."
+                variant="inverted"
+                modalPopover
+                animation={2}
+                maxCount={5}
+              />
+            ) : (
+              <div className="text-sm text-muted-foreground p-3 border rounded-md bg-muted/50">
+                No use cases available. Use cases will appear here once they are configured in your DataRobot AI Catalog.
+              </div>
+            )}
+            <h6>Select datasets from filtered results</h6>
             <MultiSelect
               options={
-                data
-                  ? data.map((i) => ({
+                filteredDatasets
+                  ? filteredDatasets.map((i) => ({
                       label: i.name,
                       value: i.id,
                       postfix: i.size,
@@ -111,7 +142,7 @@ export const AddDataModal = () => {
               }
               onValueChange={setSelectedDatasets}
               defaultValue={selectedDatasets}
-              placeholder="Select one or more items."
+              placeholder="Select one or more datasets..."
               variant="inverted"
               modalPopover
               animation={2}

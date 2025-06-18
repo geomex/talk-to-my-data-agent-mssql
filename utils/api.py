@@ -202,36 +202,97 @@ def cache(f: T) -> T:
         return cast(T, wrapper)
 
 
-# This can be large as we are not storing the actual datasets in memory, just metadata
-def list_registry_datasets(limit: int = 100) -> list[DataRegistryDataset]:
+def list_registry_datasets(
+    limit: int = 100,
+    category: str | None = None,
+    filter_failed: bool | None = None,
+    order_by: str | None = None,
+    use_cases: list[str] | None = None
+) -> list[DataRegistryDataset]:
     """
-    Fetch datasets from Data Registry with specified limit
+    Fetch datasets from Data Registry with specified limit and filters
 
     Args:
-        limit: int
-        Datasets to retrieve. Max value: 100
+        limit: int - Maximum number of datasets to retrieve. Max value: 100
+        category: str | None - Optional. If specified, only dataset versions that have the specified category will be included. 
+                   Supported categories are "TRAINING" and "PREDICTION".
+        filter_failed: bool | None - If True, datasets that failed during import will be excluded from the results.
+        order_by: str | None - Sorting order. Valid options: "created", "-created" (default: "-created")
+        use_cases: list[str] | None - Filter available datasets by specific Use Case IDs or names.
     """
 
-    url = f"datasets?limit={limit}"
+    try:
+        # If use cases are specified, use dr.Dataset.list() method for proper filtering
+        if use_cases:
+            try:
+                datasets = dr.Dataset.list(
+                    category=category,
+                    filter_failed=filter_failed,
+                    order_by=order_by,
+                    use_cases=use_cases
+                )
+                
+                # Apply limit after filtering
+                limited_datasets = datasets[:limit] if limit else datasets
+                
+                return [
+                    DataRegistryDataset(
+                        id=ds.id,
+                        name=ds.name,
+                        created=(
+                            ds.creation_date[:10] if hasattr(ds, 'creation_date') and ds.creation_date else "N/A"
+                        ),
+                        size=(
+                            f"{ds.dataset_size / (1024 * 1024):.1f} MB"
+                            if hasattr(ds, 'dataset_size') and ds.dataset_size is not None
+                            else "N/A"
+                        ),
+                    )
+                    for ds in limited_datasets
+                ]
+            except Exception as e:
+                logger.warning(f"Failed to use dr.Dataset.list() with use cases, falling back to REST API: {str(e)}")
+                # Fall back to REST API approach
+        
+        # Use REST API approach for other filters or when use case filtering fails
+        params = {"limit": str(limit)}
+        
+        if category:
+            params["category"] = str(category)
+        if filter_failed is not None:
+            params["filter_failed"] = str(filter_failed).lower()
+        if order_by:
+            params["order_by"] = str(order_by)
+        if use_cases:
+            # Handle multiple use cases - join with comma
+            params["use_cases"] = ",".join([str(uc) for uc in use_cases])
 
-    # Get all datasets and manually limit the results
-    datasets = dr.client.get_client().get(url).json()["data"]
+        # Build URL with query parameters
+        query_string = "&".join([f"{k}={v}" for k, v in params.items()])
+        url = f"datasets?{query_string}"
 
-    return [
-        DataRegistryDataset(
-            id=ds["datasetId"],
-            name=ds["name"],
-            created=(
-                ds["creationDate"][:10] if "creationDate" in ds else "N/A"  # %Y-%m-%d
-            ),
-            size=(
-                f"{ds['datasetSize'] / (1024 * 1024):.1f} MB"
-                if "datasetSize" in ds
-                else "N/A"
-            ),
-        )
-        for ds in datasets
-    ]
+        # Get datasets with filters applied
+        datasets = dr.client.get_client().get(url).json()["data"]
+
+        return [
+            DataRegistryDataset(
+                id=ds["datasetId"],
+                name=ds["name"],
+                created=(
+                    ds["creationDate"][:10] if "creationDate" in ds else "N/A"  # %Y-%m-%d
+                ),
+                size=(
+                    f"{ds['datasetSize'] / (1024 * 1024):.1f} MB"
+                    if "datasetSize" in ds
+                    else "N/A"
+                ),
+            )
+            for ds in datasets
+        ]
+    except Exception as e:
+        logger.error(f"Error fetching datasets from DataRobot AI Catalog: {str(e)}")
+        # Fallback to empty list if there's an error
+        return []
 
 
 async def download_registry_datasets(

@@ -60,6 +60,38 @@ if settings_generative.LLM == LLMs.DEPLOYED_LLM:
 
 check_feature_flags(PROJECT_ROOT / "infra" / "feature_flag_requirements.yaml")
 
+# Get use case configuration from environment variables or Pulumi config
+use_cases = []
+use_case_filter_enabled = True
+
+# Try to get from Pulumi config first
+try:
+    use_cases_config = pulumi.Config().get("use_cases")
+    if use_cases_config:
+        import json
+        use_cases = json.loads(use_cases_config)
+    
+    use_case_filter_enabled_config = pulumi.Config().get_bool("use_case_filter_enabled")
+    if use_case_filter_enabled_config is not None:
+        use_case_filter_enabled = use_case_filter_enabled_config
+except Exception:
+    pass
+
+# Fallback to environment variables
+if not use_cases:
+    use_cases_env = os.environ.get("USE_CASES")
+    if use_cases_env:
+        import json
+        try:
+            use_cases = json.loads(use_cases_env)
+        except json.JSONDecodeError:
+            pulumi.log.warn(f"Invalid USE_CASES environment variable: {use_cases_env}")
+
+if use_case_filter_enabled:
+    use_case_filter_enabled_env = os.environ.get("USE_CASE_FILTER_ENABLED")
+    if use_case_filter_enabled_env:
+        use_case_filter_enabled = use_case_filter_enabled_env.lower() in ("true", "1", "yes")
+
 with open(
     settings_app_infra.application_path / "app_infra.json", "w"
 ) as infra_selection:
@@ -67,6 +99,8 @@ with open(
         AppInfra(
             database=DATABASE_CONNECTION_TYPE,
             llm=settings_generative.LLM.name,
+            use_cases=use_cases,
+            use_case_filter_enabled=use_case_filter_enabled,
         ).model_dump_json()
     )
 

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { datasetKeys } from "./keys";
-import { getDatasets, uploadDataset, deleteAllDatasets } from "./api-requests";
+import { getDatasets, uploadDataset, deleteAllDatasets, getAvailableUseCases } from "./api-requests";
 import { useState } from "react";
 import { dictionaryKeys } from "../dictionaries/keys";
 import { DictionaryTable } from "../dictionaries/types";
@@ -22,13 +22,40 @@ export interface UploadError extends Error {
   isAxiosError?: boolean;
 }
 
-export const useFetchAllDatasets = ({ limit = 100 } = {}) => {
+export const useFetchAllDatasets = ({ 
+  limit = 100,
+  useCases,
+  category,
+  filterFailed,
+  orderBy
+}: {
+  limit?: number;
+  useCases?: string[];
+  category?: string;
+  filterFailed?: boolean;
+  orderBy?: string;
+} = {}) => {
   const queryResult = useQuery({
-    queryKey: datasetKeys.all,
-    queryFn: ({ signal }) => getDatasets({ signal, limit }),
+    queryKey: [...datasetKeys.all, { limit, useCases, category, filterFailed, orderBy }],
+    queryFn: ({ signal }) => getDatasets({ 
+      signal, 
+      limit, 
+      useCases, 
+      category, 
+      filterFailed, 
+      orderBy 
+    }),
   });
 
   return queryResult;
+};
+
+export const useAvailableUseCases = () => {
+  return useQuery({
+    queryKey: ['use-cases'],
+    queryFn: ({ signal }) => getAvailableUseCases({ signal }),
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+  });
 };
 
 export const useFileUploadMutation = ({

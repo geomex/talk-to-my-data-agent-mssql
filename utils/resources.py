@@ -89,6 +89,60 @@ app_env_name: str = "DATAROBOT_APPLICATION_ID"
 llm_deployment_env_name: str = "LLM_DEPLOYMENT_ID"
 
 
+class UseCaseSettings(DynamicSettings):
+    """Settings for use case filtering configuration"""
+    
+    use_cases: list[str] = Field(
+        default_factory=list,
+        description="List of use case names to filter datasets from DataRobot AI Catalog"
+    )
+    use_case_filter_enabled: bool = Field(
+        default=True,
+        description="Whether to enable use case filtering for dataset access"
+    )
+    
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: Type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> Tuple[PydanticBaseSettingsSource, ...]:
+        return (
+            init_settings,
+            PulumiSettingsSource(settings_cls),
+            env_settings,
+        )
+
+
+def get_use_case_config() -> dict[str, Any]:
+    """Get use case configuration from multiple sources"""
+    try:
+        # Try to get from UseCaseSettings (environment variables, Pulumi)
+        use_case_settings = UseCaseSettings()
+        return {
+            "use_cases": use_case_settings.use_cases,
+            "use_case_filter_enabled": use_case_settings.use_case_filter_enabled
+        }
+    except Exception:
+        # Fallback to app_infra.json
+        try:
+            from utils.database_helpers import load_app_infra
+            app_infra = load_app_infra()
+            return {
+                "use_cases": getattr(app_infra, 'use_cases', []),
+                "use_case_filter_enabled": getattr(app_infra, 'use_case_filter_enabled', True)
+            }
+        except Exception:
+            # Default configuration
+            return {
+                "use_cases": [],
+                "use_case_filter_enabled": True
+            }
+
+
 class LLMDeployment(DynamicSettings):
     id: str = Field(
         validation_alias=AliasChoices(

@@ -363,10 +363,46 @@ def _set_session_cookie(
 
 @router.get("/registry/datasets")
 async def get_registry_datasets(
-    request: Request, limit: int = 100
+    request: Request, 
+    limit: int = 100,
+    category: str | None = None,
+    filter_failed: bool | None = None,
+    order_by: str | None = None,
+    use_cases: str | None = None
 ) -> list[DataRegistryDataset]:
     with use_user_token(request):
-        return list_registry_datasets(limit)
+        # Convert use_cases string back to list if provided
+        use_cases_list = None
+        if use_cases:
+            use_cases_list = [uc.strip() for uc in use_cases.split(',')]
+            logger.info(f"Using use cases from request: {use_cases_list}")
+        else:
+            # If no use cases specified, apply configuration-based filtering
+            from utils.resources import get_use_case_config
+            config = get_use_case_config()
+            
+            logger.info(f"Use case configuration: {config}")
+            
+            if config.get("use_case_filter_enabled", True):
+                configured_use_cases = config.get("use_cases", [])
+                if configured_use_cases:
+                    use_cases_list = configured_use_cases
+                    logger.info(f"Applying configured use case filter: {use_cases_list}")
+                else:
+                    logger.info("No use cases configured, returning all datasets")
+            else:
+                logger.info("Use case filtering disabled, returning all datasets")
+        
+        result = list_registry_datasets(
+            limit=limit,
+            category=category,
+            filter_failed=filter_failed,
+            order_by=order_by,
+            use_cases=use_cases_list
+        )
+        
+        logger.info(f"Returning {len(result)} datasets")
+        return result
 
 
 @router.get("/database/tables")
@@ -1115,6 +1151,38 @@ async def store_datarobot_account(
         request.state.session.datarobot_api_token = request_data["api_token"]
 
     return {"success": True}
+
+
+@router.get("/registry/use-cases")
+async def get_available_use_cases(request: Request) -> list[str]:
+    """Get available use cases from DataRobot AI Catalog"""
+    with use_user_token(request):
+        try:
+            # Get use case configuration
+            from utils.resources import get_use_case_config
+            config = get_use_case_config()
+            
+            # If use case filtering is disabled, return empty list
+            if not config.get("use_case_filter_enabled", True):
+                return []
+            
+            # If specific use cases are configured, return those
+            configured_use_cases = config.get("use_cases", [])
+            if configured_use_cases:
+                return configured_use_cases
+            
+            # TODO: Implement actual DataRobot API call to get available use cases
+            # This should call dr.UseCase.list() or similar DataRobot API
+            # For now, returning empty array - replace with actual implementation
+            
+            # Example of what this might look like:
+            # use_cases = dr.UseCase.list()
+            # return [uc.name for uc in use_cases]
+            
+            return []
+        except Exception as e:
+            logger.error(f"Error fetching use cases: {str(e)}")
+            return []
 
 
 app.include_router(router)

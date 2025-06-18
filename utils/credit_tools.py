@@ -229,8 +229,13 @@ def analyze_data(dfs):
     import polars as pl
     import pandas as pd
 
-    # Access the DataAgente dataframe
-    df = dfs['DataAgente']
+    # Get the first available dataset from the dictionary
+    if not dfs:
+        raise ValueError("No datasets provided in the input dictionary")
+    
+    dataset_name = next(iter(dfs))
+    df = dfs[dataset_name]
+    logger.info(f"Analyzing dataset: {dataset_name}")
 
     # Convert to pandas for easier manipulation
     df = df.to_pandas()
@@ -245,6 +250,13 @@ def analyze_data(dfs):
         'CC04M': 0.047,  # 4.7%
         'CC06M': 0.095   # 9.5%
     }
+
+    # Validate that at least some of the required columns are present
+    available_horizons = [col for col in time_horizons if col in df.columns]
+    if not available_horizons:
+        raise ValueError(f"Dataset {dataset_name} does not contain any of the required credit quality columns: {', '.join(time_horizons)}")
+    
+    logger.info(f"Found credit quality columns: {', '.join(available_horizons)}")
 
     def calculate_credit_quality(data, time_horizons):
         """
