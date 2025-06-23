@@ -57,7 +57,7 @@ Codespace users can **skip steps 1 and 2**. For local development, follow all of
    OPENAI_API_BASE=...  # e.g. https://your_org.openai.azure.com/
    OPENAI_API_DEPLOYMENT_ID=...  # e.g. gpt-4o
    PULUMI_CONFIG_PASSPHRASE=...  # Required. Choose your own alphanumeric passphrase to be used for encrypting pulumi config
-   FRONTEND_TYPE=...  # Optional. Default is "streamlit". Set to "react" to use React frontend
+   FRONTEND_TYPE=...  # Optional. Default is "react", set to "streamlit" to use Streamlit frontend
    ```
    Use the following resources to locate the required credentials:
    - **DataRobot API Token**: Refer to the *Create a DataRobot API Key* section of the [DataRobot API Quickstart docs](https://docs.datarobot.com/en/docs/api/api-quickstart/index.html#create-a-datarobot-api-key).
@@ -88,7 +88,7 @@ App templates contain three families of complementary logic:
 - **App Logic**: Necessary for user consumption; whether via a hosted front-end or integrating into an external consumption layer.
   ```
   frontend/  # Streamlit frontend
-  frontend_react/  # React frontend alternative
+  app_frontend/  # React frontend alternative with the api located in app_backend
   utils/  # App business logic & runtime helpers
   ```
 - **Operational Logic**: Necessary to activate DataRobot assets.
@@ -131,11 +131,11 @@ To change the frontend:
 > **⚠️ Important note:**  
 > If you make changes to the React frontend code, you need to rebuild it before deploying:
 > ```bash
-> cd frontend_react/react_src
+> cd app_frontend
 > npm install
 > npm run build
 > ```
-> The built files will be placed in `frontend_react/deploy/dist/` which will be used by the deployment. See `frontend_react/react_src/README.md` for more details on developing and building the React frontend.
+> The built files will be placed in `app_frontend/static/` which will be used by the deployment. See `app_frontend/README.md` for more details on developing and building the React frontend.
 
 ### Change the LLM
 

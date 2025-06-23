@@ -18,6 +18,7 @@ import asyncio
 import inspect
 import json
 import logging
+import os
 import re
 import sys
 import tempfile
@@ -56,7 +57,7 @@ from openai.types.chat.chat_completion_user_message_param import (
 from plotly.subplots import make_subplots
 from pydantic import ValidationError
 
-sys.path.append("..")
+sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 from utils import prompts, tools
 from utils.analyst_db import AnalystDB, DataSourceType
 from utils.code_execution import (
@@ -104,10 +105,14 @@ from utils.schema import (
     Tool,
     ValidatedQuestion,
 )
+from utils.credit_prompts import get_credit_quality_system_prompt, get_credit_quality_examples
+from utils.credit_tools import read_csv_with_encoding
 
 logger = get_logger()
 logging.getLogger("openai").setLevel(logging.WARNING)
 logging.getLogger("openai.http_client").setLevel(logging.WARNING)
+
+VALUE_ERROR_MESSAGE = "Input data cannot be empty (no dataset provided)"
 
 
 def log_memory() -> None:
@@ -121,7 +126,7 @@ def initialize_deployment() -> tuple[RESTClientObject, str]:
         dr_client = dr.Client()
         chat_agent_deployment_id = LLMDeployment().id
         deployment_chat_base_url = (
-            dr_client.endpoint + f"/deployments/{chat_agent_deployment_id}/"
+            f"{dr_client.endpoint.rstrip('/')}/deployments/{chat_agent_deployment_id}/"
         )
         return dr_client, deployment_chat_base_url
     except ValidationError as e:
@@ -161,6 +166,8 @@ ALTERNATIVE_LLM_SMALL = "datarobot-deployed-llm"
 DICTIONARY_BATCH_SIZE = 10
 MAX_REGISTRY_DATASET_SIZE = 400e6  # aligns to 400MB set in streamlit config.toml
 DISK_CACHE_LIMIT_BYTES = 512e6
+DICTIONARY_PARALLEL_BATCH_SIZE = 2
+DICTIONARY_TIMEOUT = 45.0
 
 _memory = Memory(tempfile.gettempdir(), verbose=0)
 _memory.clear(warn=False)  # clear cache on startup
@@ -319,11 +326,8 @@ async def download_registry_datasets(
     result_datasets: list[AnalystDataset] = []
     for dataset in datasets:
         try:
-            df_records = cast(
-                list[dict[str, Any]],
-                dataset.get_as_dataframe().to_dict(orient="records"),
-            )
-            result_datasets.append(AnalystDataset(name=dataset.name, data=df_records))
+            df = dataset.get_as_dataframe()
+            result_datasets.append(AnalystDataset(name=dataset.name, data=df))
             logger.info(f"Successfully downloaded {dataset.name}")
         except Exception as e:
             logger.error(f"Failed to read dataset {dataset.name}: {str(e)}")
@@ -478,13 +482,49 @@ async def get_dictionary(dataset: AnalystDataset) -> DataDictionary:
             f"Created {len(column_batches)} batches for {len(df.columns)} columns"
         )
 
-        tasks = [
-            _get_dictionary_batch(batch, df, DICTIONARY_BATCH_SIZE)
-            for batch in column_batches
-        ]
+        # Create a semaphore to limit concurrent tasks to 2
+        sem = asyncio.Semaphore(DICTIONARY_PARALLEL_BATCH_SIZE)
 
-        results = await asyncio.gather(*tasks)
-        dictionary = sum(results, [])
+        async def throttled_get_dictionary_batch(
+            batch: list[str],
+        ) -> list[DataDictionaryColumn]:
+            try:
+                async with sem:
+                    return await asyncio.wait_for(
+                        _get_dictionary_batch(batch, df, DICTIONARY_BATCH_SIZE),
+                        timeout=DICTIONARY_TIMEOUT,
+                    )
+            except asyncio.TimeoutError:
+                logger.warning(f"Timeout processing batch: {batch}")
+                return [
+                    DataDictionaryColumn(
+                        column=col,
+                        description="No Description Available",
+                        data_type=str(df[col].dtype),
+                    )
+                    for col in batch
+                ]
+            except Exception as e:
+                logger.error(f"Error processing batch {batch}: {str(e)}")
+                return [
+                    DataDictionaryColumn(
+                        column=col,
+                        description="No Description Available",
+                        data_type=str(df[col].dtype),
+                    )
+                    for col in batch
+                ]
+
+        tasks = [throttled_get_dictionary_batch(batch) for batch in column_batches]
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        # Filter out any exceptions and flatten results
+        dictionary: list[DataDictionaryColumn] = []
+        for result in results:
+            if isinstance(result, BaseException):
+                logger.error(f"Task failed with error: {str(result)}")
+                continue
+            dictionary.extend(result)
 
         logger.info(
             f"Created dictionary with {len(dictionary)} entries for dataset {dataset.name}"
@@ -951,7 +991,7 @@ async def _run_charts(
     start_time = datetime.now()
 
     if not request.dataset:
-        raise ValueError("Input data cannot be empty")
+        raise ValueError(VALUE_ERROR_MESSAGE)
 
     df = request.dataset.to_df().to_pandas()
     if exception_history is None:
@@ -1115,7 +1155,7 @@ async def _run_analysis(
     start_time = datetime.now()
 
     if not request.dataset_names:
-        raise ValueError("Input data cannot be empty")
+        raise ValueError(VALUE_ERROR_MESSAGE)
 
     if exception_history is None:
         exception_history = []
@@ -1307,7 +1347,7 @@ async def _run_database_analysis(
 ) -> RunDatabaseAnalysisResult:
     start_time = datetime.now()
     if not request.dataset_names:
-        raise ValueError("Input data cannot be empty")
+        raise ValueError(VALUE_ERROR_MESSAGE)
 
     if exception_history is None:
         exception_history = []
@@ -1353,6 +1393,15 @@ async def run_database_analysis(
                 duration=e.duration,
                 attempts=len(e.exception_history) if e.exception_history else 0,
                 exception=AnalysisError.from_max_reflection_exception(e),
+            ),
+        )
+    except ValueError as e:
+        return RunDatabaseAnalysisResult(
+            status="error",
+            metadata=RunDatabaseAnalysisResultMetadata(
+                duration=0,
+                attempts=1,
+                exception=AnalysisError.from_value_error(e),
             ),
         )
 
@@ -1414,10 +1463,13 @@ async def run_complete_analysis(
     enable_chart_generation: bool = True,
     enable_business_insights: bool = True,
     language: str = "en",
-) -> AsyncGenerator[
-    Union[str, RunAnalysisResult, RunChartsResult, GetBusinessAnalysisResult], None
-]:
-    """Run the complete analysis pipeline"""
+) -> AsyncGenerator[Component | AnalysisGenerationError, None]:
+    user_message = await analyst_db.get_chat_message(message_id=message_id)
+    if user_message is None or user_message.role != "user":
+        yield AnalysisGenerationError("Message not found")
+
+        return
+    # Get enhanced message
     try:
         # Select appropriate system prompt based on language
         system_prompt = (
@@ -1449,13 +1501,13 @@ async def run_complete_analysis(
                 0,
                 ChatCompletionSystemMessageParam(
                     role="system",
-                    content=get_credit_quality_system_prompt()
+                    content=get_credit_quality_system_prompt(language)
                 )
             )
             
             # Add example interactions if this is the first message
             if len(chat_request.messages) == 2:  # Only system prompt and user message
-                for example in get_credit_quality_examples():
+                for example in get_credit_quality_examples(language):
                     chat_request.messages.insert(
                         1,
                         ChatCompletionUserMessageParam(
@@ -1475,26 +1527,32 @@ async def run_complete_analysis(
         logger.info("Getting rephrased question...")
         enhanced_message = await rephrase_message(chat_request)
         logger.info("Getting rephrased question done")
+
         yield enhanced_message
+
     except ValidationError:
-        yield AnalysisGenerationError("LLM Error, please retry")
+        user_message.error = "LLM Error, please retry"
+        user_message.in_progress = False
+        await analyst_db.update_chat_message(
+            message_id=message_id,
+            message=user_message,
+        )
+        yield AnalysisGenerationError(user_message.error)
+
         return
+
     assistant_message = AnalystChatMessage(
         role="assistant",
         content=enhanced_message,
         components=[EnhancedQuestionGeneration(enhanced_user_message=enhanced_message)],
     )
-    user_message = await analyst_db.get_chat_message(message_id=message_id)
-    if user_message:
-        if user_message.role == "user":
-            user_message.in_progress = False
-            await analyst_db.update_chat_message(
-                message_id=message_id,
-                message=user_message,
-            )
-            await analyst_db.add_chat_message(
-                chat_id=chat_id, message=assistant_message
-            )
+
+    user_message.in_progress = False
+    await analyst_db.update_chat_message(
+        message_id=message_id,
+        message=user_message,
+    )
+    await analyst_db.add_chat_message(chat_id=chat_id, message=assistant_message)
     # Run main analysis
     logger.info("Start main analysis")
     try:
@@ -1526,13 +1584,14 @@ async def run_complete_analysis(
 
         if isinstance(analysis_result, BaseException):
             error_message = f"Error running initial analysis. Try rephrasing: {str(analysis_result)}"
-
-            yield AnalysisGenerationError(error_message)
-
             assistant_message.in_progress = False
+            assistant_message.error = error_message
             await analyst_db.update_chat_message(
                 message_id=assistant_message.id, message=assistant_message
             )
+
+            yield AnalysisGenerationError(error_message)
+
             return
 
         yield analysis_result
@@ -1544,13 +1603,14 @@ async def run_complete_analysis(
 
     except Exception as e:
         error_message = f"Error running initial analysis. Try rephrasing: {str(e)}"
-
-        yield AnalysisGenerationError(error_message)
-
         assistant_message.in_progress = False
+        assistant_message.error = error_message
         await analyst_db.update_chat_message(
             message_id=assistant_message.id, message=assistant_message
         )
+
+        yield AnalysisGenerationError(error_message)
+
         return
 
     # Only proceed with additional analysis if we have valid initial results
@@ -1577,31 +1637,32 @@ async def run_complete_analysis(
         # Handle chart results
         if isinstance(charts_result, BaseException):
             error_message = "Error generating charts"
-
-            yield AnalysisGenerationError(error_message)
-
+            assistant_message.error = error_message
             await analyst_db.update_chat_message(
                 message_id=assistant_message.id, message=assistant_message
             )
 
+            yield AnalysisGenerationError(error_message)
+
         elif charts_result is not None:
-            yield charts_result
             assistant_message.components.append(charts_result)
             await analyst_db.update_chat_message(
                 message_id=assistant_message.id, message=assistant_message
             )
 
+            yield charts_result
+
         # Handle business analysis results
         if isinstance(business_result, BaseException):
             error_message = "Error generating business insights"
-
-            yield AnalysisGenerationError("Error generating business insights")
-
+            assistant_message.error = error_message
             await analyst_db.update_chat_message(
                 message_id=assistant_message.id, message=assistant_message
             )
+
+            yield AnalysisGenerationError(error_message)
+
         elif business_result is not None:
-            yield business_result
             assistant_message.components.append(business_result)
             assistant_message.in_progress = False
 
@@ -1609,15 +1670,17 @@ async def run_complete_analysis(
                 message_id=assistant_message.id, message=assistant_message
             )
 
+            yield business_result
+
     except Exception as e:
         error_message = f"Error setting up additional analysis: {str(e)}"
-
-        yield AnalysisGenerationError(error_message)
-
         assistant_message.in_progress = False
+        assistant_message.error = error_message
         await analyst_db.update_chat_message(
             message_id=assistant_message.id, message=assistant_message
         )
+
+        yield AnalysisGenerationError(error_message)
 
 
 async def process_data_and_update_state(
