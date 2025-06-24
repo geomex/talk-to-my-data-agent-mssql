@@ -158,7 +158,7 @@ class AsyncLLMClient:
 ALTERNATIVE_LLM_BIG = "datarobot-deployed-llm"
 ALTERNATIVE_LLM_SMALL = "datarobot-deployed-llm"
 DICTIONARY_BATCH_SIZE = 10
-MAX_REGISTRY_DATASET_SIZE = 400e6  # aligns to 400MB set in streamlit config.toml
+MAX_REGISTRY_DATASET_SIZE = 3 * 1024**3  # 3GB limit
 DISK_CACHE_LIMIT_BYTES = 512e6
 
 _memory = Memory(tempfile.gettempdir(), verbose=0)
