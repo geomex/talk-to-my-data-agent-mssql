@@ -21,6 +21,7 @@ from datarobot_pulumi_utils.schema.custom_models import (
     CustomModelArgs,
     DeploymentArgs,
     RegisteredModelArgs,
+    CustomModelResourceBundles,
 )
 from datarobot_pulumi_utils.schema.exec_envs import RuntimeEnvironments
 from datarobot_pulumi_utils.schema.llms import (
@@ -41,6 +42,7 @@ custom_model_args = CustomModelArgs(
     target_type=dr.enums.TARGET_TYPE.TEXT_GENERATION,
     replicas=2,
     base_environment_id=RuntimeEnvironments.PYTHON_312_MODERATIONS.value.id,
+    resource_bundle_id=CustomModelResourceBundles.CPU_8XL.value.id,
     opts=pulumi.ResourceOptions(delete_before_replace=True),
 )
 

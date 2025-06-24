@@ -214,3 +214,6 @@ app_backend/app_infra.json
 !app_backend/deploy/dist
 
 !app_frontend/src/lib
+
+# Undo tree temporary files
+*.~undo-tree~
