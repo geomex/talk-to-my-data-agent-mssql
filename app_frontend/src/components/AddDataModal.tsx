@@ -96,7 +96,7 @@ export const AddDataModal = () => {
                 {t('Local files')}
               </div>
               <div className="text-muted-foreground text-sm font-normal leading-normal">
-                {t('Select one or more CSV, XLSX, XLS files, up to 200MB.')}
+                {t('Select one or more CSV, XLSX, XLS files, up to 2GB.')}
               </div>
             </div>
             <FileUploader onFilesChange={setFiles} progress={progress} />

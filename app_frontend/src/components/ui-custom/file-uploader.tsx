@@ -13,7 +13,7 @@ interface FileUploaderProps {
 }
 
 export const FileUploader: React.FC<FileUploaderProps> = ({
-    maxSize = 1024 * 1024 * 200,
+    maxSize = 1024 * 1024 * 2048,  # 2 GB
     accept = { 'file/csv': ['.csv'], 'file/xlsx': ['.xlsx', '.xls'] },
     progress = 0,
     onFilesChange,
