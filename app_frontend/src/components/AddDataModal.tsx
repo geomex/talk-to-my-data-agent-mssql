@@ -98,7 +98,7 @@ export const AddDataModal = () => {
                 Local files
               </div>
               <div className="text-muted-foreground text-sm font-normal leading-normal">
-                Select one or more CSV, XLSX, XLS files, up to 200MB.
+                Select one or more CSV, XLSX, XLS files, up to 2GB.
               </div>
             </div>
             <FileUploader onFilesChange={setFiles} progress={progress} />
