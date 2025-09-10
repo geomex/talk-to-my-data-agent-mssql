@@ -33,7 +33,7 @@ from datarobot_pulumi_utils.schema.llms import (
 
 from utils.schema import LLMDeploymentSettings
 
-LLM = LLMs.AZURE_OPENAI_GPT_4_O
+LLM = LLMs.DEPLOYED_LLM
 
 custom_model_args = CustomModelArgs(
     resource_name=f"Generative Analyst Custom Model [{PROJECT_NAME}]",
