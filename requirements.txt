@@ -51,6 +51,7 @@ sqlalchemy>=2.0.37,<3.0
 cryptography>=44.0.0,<45.0
 hdbcli>=2.23.27,<3.0
 chardet>=5.2.0,<6.0
+psycopg2-binary
 
 # genai
 openai>=1.59.9,<2

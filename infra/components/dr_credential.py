@@ -33,6 +33,7 @@ from utils.credentials import (
     NoDatabaseCredentials,
     SAPDatasphereCredentials,
     SnowflakeCredentials,
+    RedshiftCredentials
 )
 from utils.schema import (
     DatabaseConnectionType,
@@ -223,7 +224,34 @@ def get_credential_runtime_parameter_values(
             },
         ]
         credential_rtp_dicts = [rtp for rtp in rtps if rtp["value"] is not None]
-
+    elif isinstance(credentials, RedshiftCredentials):
+        rtps = []
+        if credentials.user and credentials.password:
+            rtps.append(
+                {
+                    "key": "db_credential",
+                    "type": "basic_credential",
+                    "value": {
+                        "user": credentials.user,
+                        "password": credentials.password,
+                    },
+                }
+            )
+        if credentials.host:
+            rtps.append({"key": "REDSHIFT_HOST", "type": "string", "value": credentials.host})
+        if credentials.port:
+            rtps.append({"key": "REDSHIFT_PORT", "type": "string", "value": str(credentials.port)})
+        if credentials.database:
+            rtps.append({"key": "REDSHIFT_DATABASE", "type": "string", "value": credentials.database})
+        if credentials.db_schema:
+            rtps.append({"key": "REDSHIFT_SCHEMA", "type": "string", "value": credentials.db_schema})
+        if credentials.cluster_identifier:
+            rtps.append({"key": "REDSHIFT_CLUSTER", "type": "string", "value": credentials.cluster_identifier})
+        if credentials.iam_role:
+            rtps.append({"key": "REDSHIFT_IAM_ROLE", "type": "string", "value": credentials.iam_role})
+        
+        credential_rtp_dicts = [rtp for rtp in rtps if rtp["value"] is not None]
+        
     credential_runtime_parameter_values: list[
         datarobot.CustomModelRuntimeParameterValueArgs
     ] = []
@@ -454,12 +482,14 @@ def get_database_credentials(
     SnowflakeCredentials
     | GoogleCredentialsBQ
     | SAPDatasphereCredentials
+    | RedshiftCredentials
     | NoDatabaseCredentials
 ):
     credentials: (
         SnowflakeCredentials
         | GoogleCredentialsBQ
         | SAPDatasphereCredentials
+        | RedshiftCredentials
         | NoDatabaseCredentials
     )
 
@@ -563,6 +593,26 @@ def get_database_credentials(
                     connection.close()
                 except Exception as e:
                     raise ValueError("Failed to connect to SAP Data Sphere.") from e
+            return credentials
+        elif database == "redshift":
+            credentials = RedshiftCredentials()
+            if test_credentials:
+                import psycopg2
+
+                try:
+                    conn = psycopg2.connect(
+                        host=credentials.host,
+                        port=credentials.port,
+                        dbname=credentials.database,
+                        user=credentials.user,
+                        password=credentials.password,
+                        connect_timeout=10,
+                        sslmode="require",
+                    )
+                    conn.close()
+                    logger.info(f"\n\nConnection Successful ! \nHere are REDHSIFT CREDENTIALS {credentials},{type(credentials)}")
+                except Exception as e:
+                    raise ValueError(f"Failed to connect to Redshift: {e}") from e
             return credentials
 
     except pydantic.ValidationError as exc:

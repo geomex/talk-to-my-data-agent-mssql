@@ -15,7 +15,7 @@ import os
 
 from utils.schema import DatabaseConnectionType
 
-# Valid values are: "snowflake", "bigquery", "sap" or "no_database", "aws_s3"
+# Valid values are: "snowflake", "bigquery", "sap" or "no_database", "aws_s3", "redshift"
 DATABASE_CONNECTION_TYPE: DatabaseConnectionType = os.getenv(  # type: ignore[assignment]
     "DATABASE_CONNECTION_TYPE", "no_database"
 )

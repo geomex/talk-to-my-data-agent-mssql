@@ -28,6 +28,8 @@ import polars as pl
 import snowflake.connector
 from google.cloud import bigquery
 from hdbcli import dbapi
+import psycopg2
+
 from openai.types.chat.chat_completion_system_message_param import (
     ChatCompletionSystemMessageParam,
 )
@@ -40,12 +42,14 @@ from utils.credentials import (
     NoDatabaseCredentials,
     SAPDatasphereCredentials,
     SnowflakeCredentials,
+    RedshiftCredentials,
 )
 from utils.logging_helper import get_logger
 from utils.prompts import (
     SYSTEM_PROMPT_BIGQUERY,
     SYSTEM_PROMPT_SAP_DATASPHERE,
     SYSTEM_PROMPT_SNOWFLAKE,
+    SYSTEM_PROMPT_REDSHIFT,
 )
 from utils.schema import (
     AnalystDataset,
@@ -72,6 +76,10 @@ class BigQueryCredentialArgs:
 class SAPDatasphereCredentialArgs:
     credentials: SAPDatasphereCredentials
 
+
+@dataclass
+class RedshiftCredentialsArgs:
+    credentials: RedshiftCredentials
 
 @dataclass
 class NoDatabaseCredentialArgs:
@@ -754,12 +762,171 @@ class SAPDatasphereOperator(DatabaseOperator[SAPDatasphereCredentialArgs]):
         )
 
 
+class RedshiftOperator(DatabaseOperator[RedshiftCredentialsArgs]):
+    def __init__(
+        self,
+        credentials: RedshiftCredentials,
+        default_timeout: int = _DEFAULT_DB_QUERY_TIMEOUT,
+    ):
+        self._credentials = credentials
+        self.default_timeout = default_timeout
+    
+    # TODO: implement Connection Pooling
+    
+    @contextmanager
+    def create_connection(self) -> Generator:
+        """Create a connection to Redshift using psycopg2"""
+        conn = None
+        try:
+            logger.info(
+                "Connecting to Redshift host=%s port=%s db=%s user=%s timeout=%s",
+                self._credentials.host,
+                self._credentials.port,
+                self._credentials.database,
+                self._credentials.user,
+                self.default_timeout,
+            )
+
+            conn = psycopg2.connect(
+                host=self._credentials.host,
+                port=self._credentials.port,
+                dbname=self._credentials.database,
+                user=self._credentials.user,
+                password=self._credentials.password,
+                connect_timeout=self.default_timeout,
+                sslmode="require",
+            )
+            # logger.info(f"CONNECTED ..... {conn}")
+            yield conn
+        finally:
+            if conn is not None:
+                conn.close()
+
+    def test_credentials(self) -> bool:
+        """Test if the credentials are valid by querying the Redshift server"""
+        try:
+            with self.create_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("SELECT 1;")
+                    return cursor.fetchone() is not None
+        except Exception as e:
+            logger.error("Failed to test Redshift credentials: %s", str(e))
+            return False
+
+    def execute_query(
+        self, query: str, timeout: int | None = None
+    ) -> list[dict[str, Any]]:
+        timeout = timeout if timeout is not None else self.default_timeout
+        try:
+            with self.create_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(f"SET statement_timeout = {timeout * 1000};")
+                    cursor.execute(query)
+                    if cursor.description is None:
+                        return []  # e.g. for DDL/DML
+                    columns = [col[0] for col in cursor.description]
+                    rows = cursor.fetchall()
+                    # logger.info(f"RAW EXE {rows}")
+                    
+                    return [dict(zip(columns, row)) for row in rows]
+        except Exception as e:
+            logger.error(f"Query execution failed: {str(e)}")
+            logger.error(f"Query: {query}")
+            raise RuntimeError(
+                f"Query execution failed: {str(e)}\n{traceback.format_exc()}"
+            )
+
+    @functools.lru_cache(maxsize=1)
+    def get_tables(self, timeout: int | None = None) -> list[str]:
+        """Fetch list of tables from Redshift schema"""
+        timeout = timeout if timeout is not None else self.default_timeout
+        with self.create_connection() as conn, conn.cursor() as cursor:
+            cursor.execute(f"SET statement_timeout = {timeout * 1000};")
+            cursor.execute(
+                f"""
+                SELECT table_name
+                FROM information_schema.tables
+                WHERE table_schema = '{self._credentials.db_schema}'
+                    AND table_type = 'BASE TABLE'
+                ORDER BY table_name;
+                """
+            )
+            rows = cursor.fetchall()
+            # logger.info(f"RAW TABLE {rows}")
+            return [row[0] for row in rows]
+
+    @functools.lru_cache(maxsize=8)
+    async def get_data(
+        self,
+        *table_names: str,
+        analyst_db: AnalystDB,
+        sample_size: int = 1000,
+        timeout: int | None = None,
+        include_row_count: bool = True,
+    ) -> list[str]:
+        """Async version to load selected tables from Redshift"""
+        timeout = timeout if timeout is not None else self.default_timeout
+        dataframes = []
+    
+        try:
+            with self.create_connection() as conn:
+                cursor = conn.cursor()
+    
+                for table in table_names:
+                    try:
+                        qualified_table = f'{self._credentials.db_schema}."{table}"'
+                        logger.info(f"Fetching data from table: {qualified_table}")
+                        cursor.execute(f"SET statement_timeout = {timeout * 1000};")
+                        cursor.execute(
+                            f"""
+                            SELECT * FROM {qualified_table}
+                            LIMIT {sample_size}
+                            """
+                        )
+    
+                        columns = [desc[0] for desc in cursor.description]
+                        data = cursor.fetchall()
+                        pandas_df = pd.DataFrame(data=data, columns=columns, dtype=str)
+                        df = pl.DataFrame(
+                            data=pandas_df, schema={col: pl.String for col in columns}
+                        )
+    
+                        logger.info(
+                            f"Successfully loaded table {table}: {len(df)} rows, {len(df.columns)} columns"
+                        )
+                        dataframes.append(AnalystDataset(name=table, data=df))
+    
+                    except Exception as e:
+                        logger.error(f"Error loading table {table}: {str(e)}")
+                        continue
+    
+            names = []
+            for dataframe in dataframes:
+                await analyst_db.register_dataset(dataframe, DataSourceType.DATABASE)
+                names.append(dataframe.name)
+            return names
+    
+        except Exception as e:
+            logger.error(f"Error fetching Redshift data: {str(e)}")
+            return []
+
+    def get_system_prompt(self) -> ChatCompletionSystemMessageParam:
+        return ChatCompletionSystemMessageParam(
+            role="system",
+            content=SYSTEM_PROMPT_REDSHIFT.format(
+                schema=self._credentials.db_schema,
+                database=self._credentials.database,
+            ),
+        )
+
+
 def get_database_operator(app_infra: AppInfra) -> DatabaseOperator[Any]:
     if app_infra.database == "bigquery":
         credentials: (
             GoogleCredentialsBQ
             | SnowflakeCredentials
             | SAPDatasphereCredentials
+            | RedshiftCredentials
             | NoDatabaseCredentials
         )
         try:
@@ -779,6 +946,16 @@ def get_database_operator(app_infra: AppInfra) -> DatabaseOperator[Any]:
         except (ValidationError, ValueError):
             logger.warning(
                 "Snowflake credentials not properly configured, falling back to no database"
+            )
+        return NoDatabaseOperator(NoDatabaseCredentials())
+    elif app_infra.database == "redshift":
+        try:
+            credentials = RedshiftCredentials()
+            if credentials.is_configured():
+                return RedshiftOperator(credentials)
+        except (ValidationError, ValueError):
+            logger.warning(
+                "Redshift credentials not properly configured, falling back to no database"
             )
         return NoDatabaseOperator(NoDatabaseCredentials())
     elif app_infra.database == "sap":

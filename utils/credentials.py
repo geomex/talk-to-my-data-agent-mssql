@@ -277,5 +277,84 @@ class SAPDatasphereCredentials(DRCredentials):
         return bool(self.host and self.port and self.user and self.password)
 
 
+class RedshiftCredentials(DRCredentials):
+    """AWS Redshift Connection credentials auto-constructed using environment variables."""
+
+    user: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            AliasPath("MLOPS_RUNTIME_PARAM_db_credential", "payload", "username"),
+            "MLOPS_RUNTIME_PARAM_REDSHIFT_USER",
+            "REDSHIFT_USER",
+        ),
+    )
+    password: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            AliasPath("MLOPS_RUNTIME_PARAM_db_credential", "payload", "password"),
+            "MLOPS_RUNTIME_PARAM_REDSHIFT_PASSWORD",
+            "REDSHIFT_PASSWORD",
+        ),
+    )
+    host: str = Field(
+        validation_alias=AliasChoices(
+            AliasPath("MLOPS_RUNTIME_PARAM_REDSHIFT_HOST"),
+            "REDSHIFT_HOST",
+        ),
+    )
+    port: int = Field(
+        default=5439,  # Default Redshift port
+        validation_alias=AliasChoices(
+            AliasPath("MLOPS_RUNTIME_PARAM_REDSHIFT_PORT"),
+            "REDSHIFT_PORT",
+        ),
+    )
+    database: str = Field(
+        validation_alias=AliasChoices(
+            AliasPath("MLOPS_RUNTIME_PARAM_REDSHIFT_DATABASE"),
+            "REDSHIFT_DATABASE",
+        ),
+    )
+    db_schema: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            AliasPath("MLOPS_RUNTIME_PARAM_REDSHIFT_SCHEMA"),
+            "REDSHIFT_SCHEMA",
+        ),
+    )
+    cluster_identifier: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            AliasPath("MLOPS_RUNTIME_PARAM_REDSHIFT_CLUSTER"),
+            "REDSHIFT_CLUSTER",
+        ),
+    )
+    iam_role: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            AliasPath("MLOPS_RUNTIME_PARAM_REDSHIFT_IAM_ROLE"),
+            "REDSHIFT_IAM_ROLE",
+        ),
+    )
+
+    def is_configured(self) -> bool:
+        """Check if Redshift is properly configured with either password or IAM role."""
+        has_basic_config = all(
+            [
+                self.host,
+                self.port,
+                self.database,
+            ]
+        )
+        if not has_basic_config:
+            return False
+
+        # Either username/password or IAM role authentication must exist
+        has_password_auth = self.user is not None and self.password is not None
+        has_iam_auth = self.iam_role is not None
+
+        return has_password_auth or has_iam_auth
+    
+    
 class NoDatabaseCredentials(DRCredentials):
     pass
